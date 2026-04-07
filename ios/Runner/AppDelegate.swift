@@ -36,7 +36,7 @@ final class BrotherPrinterBridge: NSObject {
 
   private func handle(call: FlutterMethodCall, result: @escaping FlutterResult) {
     guard let arguments = call.arguments as? [String: Any] else {
-      result(statusMap(health: "error", message: "Invalid printer payload.", host: nil))
+      result(statusMap(health: "error", message: "The printer request could not be completed.", host: nil))
       return
     }
 
@@ -101,15 +101,12 @@ final class BrotherPrinterBridge: NSObject {
 
   private func unsupportedMessage(connectionType: String) -> String {
     #if targetEnvironment(simulator)
-    if connectionType == "network" {
-      return "Brother QL network printing requires a physical iPad and the Brother iOS SDK integration."
-    }
-    return "Brother QL Bluetooth printing requires a physical iPad and the Brother iOS SDK integration."
+    return "Printing is only available on a physical iPad. The iOS simulator cannot print labels."
     #else
     if connectionType == "network" {
-      return "The Flutter method channel is ready. Add Brother's iOS SDK and replace this bridge stub to enable direct QL-820NWB network printing."
+      return "Direct network printing is not available in this app build yet."
     }
-    return "The Flutter method channel is ready. Add Brother's iOS SDK and replace this bridge stub to enable direct QL-820NWB Bluetooth printing."
+    return "Direct Bluetooth printing is not available in this app build yet."
     #endif
   }
 

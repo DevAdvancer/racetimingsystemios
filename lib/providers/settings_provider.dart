@@ -23,10 +23,25 @@ class SettingsController extends AsyncNotifier<AppSettings> {
   }
 
   Future<AppSettings> saveSettings(AppSettings settings) async {
-    state = const AsyncLoading();
-    state = await AsyncValue.guard(
-      () => _settingsService.saveSettings(settings),
-    );
-    return state.requireValue;
+    final previousSettings = state.asData?.value;
+    state = AsyncData(settings);
+    try {
+      final savedSettings = await _settingsService.saveSettings(settings);
+      state = AsyncData(savedSettings);
+      return savedSettings;
+    } catch (error, stackTrace) {
+      if (previousSettings != null) {
+        state = AsyncData(previousSettings);
+      } else {
+        state = AsyncError(error, stackTrace);
+      }
+      Error.throwWithStackTrace(error, stackTrace);
+    }
+  }
+
+  Future<AppSettings> updateThemeMode(AppThemeMode themeMode) async {
+    final currentSettings =
+        state.asData?.value ?? await _settingsService.loadSettings();
+    return saveSettings(currentSettings.copyWith(themeMode: themeMode));
   }
 }

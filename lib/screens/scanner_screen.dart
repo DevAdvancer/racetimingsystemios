@@ -10,8 +10,8 @@ import 'package:race_timer/providers/admin_access_provider.dart';
 import 'package:race_timer/providers/finish_scanner_provider.dart';
 import 'package:race_timer/providers/race_provider.dart';
 import 'package:race_timer/providers/results_provider.dart';
-import 'package:race_timer/providers/settings_provider.dart';
 import 'package:race_timer/services/race_service.dart';
+import 'package:race_timer/widgets/branding.dart';
 import 'package:race_timer/widgets/results_table.dart';
 import 'package:race_timer/widgets/runner_card.dart';
 import 'package:race_timer/widgets/status_banner.dart';
@@ -26,22 +26,37 @@ class ScannerScreen extends ConsumerStatefulWidget {
 class _ScannerScreenState extends ConsumerState<ScannerScreen> {
   final TextEditingController _scannerController = TextEditingController();
   final FocusNode _scannerFocusNode = FocusNode();
+  final ValueNotifier<String> _bufferNotifier = ValueNotifier<String>('');
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        _scannerFocusNode.requestFocus();
+        _requestScannerFocus();
       }
     });
   }
 
   @override
   void dispose() {
+    _bufferNotifier.dispose();
     _scannerController.dispose();
     _scannerFocusNode.dispose();
     super.dispose();
+  }
+
+  void _requestScannerFocus() {
+    if (!_scannerFocusNode.hasFocus) {
+      _scannerFocusNode.requestFocus();
+    }
+  }
+
+  void _handleBufferChanged(String value) {
+    if (_bufferNotifier.value == value) {
+      return;
+    }
+    _bufferNotifier.value = value;
   }
 
   Future<void> _submitScan() async {
@@ -52,26 +67,15 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
       return;
     }
     _scannerController.clear();
-    _scannerFocusNode.requestFocus();
+    _bufferNotifier.value = '';
+    _requestScannerFocus();
   }
 
   @override
   Widget build(BuildContext context) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && !_scannerFocusNode.hasFocus) {
-        _scannerFocusNode.requestFocus();
-      }
-    });
-
-    final raceAsync = ref.watch(currentRaceProvider);
-    final resultsAsync = ref.watch(resultsProvider);
-    final scannerState = ref.watch(finishScannerProvider);
-    final settingsAsync = ref.watch(settingsProvider);
-    final dryRunMode = settingsAsync.asData?.value.dryRunMode ?? false;
-
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Runner Scanner'),
+        title: const BrandAppBarTitle(pageTitle: 'Runner Scanner'),
         actions: [
           IconButton(
             tooltip: 'Return to start screen',
@@ -88,24 +92,33 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
           padding: const EdgeInsets.all(24),
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final scannerPanel = SingleChildScrollView(
-                child: _buildScannerPanel(
-                  context,
-                  raceAsync: raceAsync,
-                  scannerState: scannerState,
-                  dryRunMode: dryRunMode,
-                ),
+              final scannerPanel = Consumer(
+                builder: (context, ref, child) {
+                  final raceAsync = ref.watch(currentRaceProvider);
+                  final scannerState = ref.watch(finishScannerProvider);
+
+                  return _buildScannerPanel(
+                    context,
+                    raceAsync: raceAsync,
+                    scannerState: scannerState,
+                  );
+                },
               );
-              final liveResultsPanel = _buildLiveResultsPanel(
-                context,
-                resultsAsync,
+              final liveResultsPanel = Consumer(
+                builder: (context, ref, child) {
+                  final resultsAsync = ref.watch(resultsProvider);
+                  return _buildLiveResultsPanel(context, resultsAsync);
+                },
               );
 
               if (constraints.maxWidth >= 1100) {
                 return Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    SizedBox(width: 460, child: scannerPanel),
+                    SizedBox(
+                      width: 460,
+                      child: SingleChildScrollView(child: scannerPanel),
+                    ),
                     const SizedBox(width: 24),
                     Expanded(child: liveResultsPanel),
                   ],
@@ -118,12 +131,7 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
 
               return ListView(
                 children: [
-                  _buildScannerPanel(
-                    context,
-                    raceAsync: raceAsync,
-                    scannerState: scannerState,
-                    dryRunMode: dryRunMode,
-                  ),
+                  scannerPanel,
                   const SizedBox(height: 24),
                   SizedBox(height: liveResultsHeight, child: liveResultsPanel),
                 ],
@@ -181,7 +189,6 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
     BuildContext context, {
     required AsyncValue<Race?> raceAsync,
     required FinishScannerState scannerState,
-    required bool dryRunMode,
   }) {
     final race = raceAsync.asData?.value;
     final waitingMessage = race == null
@@ -236,24 +243,29 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
               controller: _scannerController,
               focusNode: _scannerFocusNode,
               autofocus: true,
-              onChanged: ref.read(finishScannerProvider.notifier).updateBuffer,
+              onChanged: _handleBufferChanged,
               onSubmitted: (_) => _submitScan(),
             ),
           ),
         ),
-        RunnerCard(
-          title: race?.isRunning == true
-              ? 'Finish scanner ready'
-              : 'Early-start scanner ready',
-          subtitle: scannerState.isSubmitting
-              ? 'Recording scan...'
-              : scannerState.buffer.isEmpty
-              ? waitingMessage
-              : 'Buffered: ${scannerState.buffer}',
-          trailing: IconButton(
-            icon: const Icon(Icons.center_focus_strong),
-            onPressed: () => _scannerFocusNode.requestFocus(),
-          ),
+        ValueListenableBuilder<String>(
+          valueListenable: _bufferNotifier,
+          builder: (context, buffer, child) {
+            return RunnerCard(
+              title: race?.isRunning == true
+                  ? 'Finish scanner ready'
+                  : 'Early-start scanner ready',
+              subtitle: scannerState.isSubmitting
+                  ? 'Recording scan...'
+                  : buffer.isEmpty
+                  ? waitingMessage
+                  : 'Buffered: $buffer',
+              trailing: IconButton(
+                icon: const Icon(Icons.center_focus_strong),
+                onPressed: _requestScannerFocus,
+              ),
+            );
+          },
         ),
         const SizedBox(height: 16),
         SizedBox(
@@ -264,26 +276,6 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
             label: const Text('Record Scan'),
           ),
         ),
-        if (dryRunMode) ...[
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: scannerState.isSubmitting
-                  ? null
-                  : () async {
-                      await ref
-                          .read(finishScannerProvider.notifier)
-                          .simulateNextScan();
-                      if (mounted) {
-                        _scannerFocusNode.requestFocus();
-                      }
-                    },
-              icon: const Icon(Icons.play_arrow),
-              label: const Text('Simulate Scan'),
-            ),
-          ),
-        ],
       ],
     );
   }

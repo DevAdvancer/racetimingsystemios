@@ -2,9 +2,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:race_timer/core/constants.dart';
 import 'package:race_timer/providers/admin_access_provider.dart';
-import 'package:race_timer/screens/diagnostics_screen.dart';
 import 'package:race_timer/screens/export_screen.dart';
 import 'package:race_timer/screens/home_screen.dart';
+import 'package:race_timer/screens/overall_points_screen.dart';
 import 'package:race_timer/screens/race_dashboard_screen.dart';
 import 'package:race_timer/screens/race_control_screen.dart';
 import 'package:race_timer/screens/registration_screen.dart';
@@ -60,8 +60,8 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const ExportScreen(),
       ),
       GoRoute(
-        path: AppRoutes.diagnostics,
-        builder: (context, state) => const DiagnosticsScreen(),
+        path: AppRoutes.overallPoints,
+        builder: (context, state) => const OverallPointsScreen(),
       ),
       GoRoute(
         path: AppRoutes.setup,

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:race_timer/database/database_helper.dart';
 import 'package:race_timer/models/race.dart';
+import 'package:race_timer/models/race_distance_config.dart';
 import 'package:race_timer/services/barcode_service.dart';
 import 'package:race_timer/services/database_service.dart';
 import 'package:race_timer/services/import_service.dart';
@@ -45,6 +46,11 @@ final raceServiceProvider = Provider<RaceService>((ref) {
 final raceListProvider = FutureProvider<List<Race>>((ref) {
   return ref.watch(raceServiceProvider).listRaces();
 });
+
+final raceDistanceConfigsProvider =
+    FutureProvider.family<List<RaceDistanceConfig>, int>((ref, raceId) {
+      return ref.watch(raceServiceProvider).listRaceDistanceConfigs(raceId);
+    });
 
 final currentRaceProvider = AsyncNotifierProvider<CurrentRaceController, Race?>(
   CurrentRaceController.new,

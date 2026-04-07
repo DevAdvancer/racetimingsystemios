@@ -6,30 +6,25 @@ import 'package:race_timer/providers/results_provider.dart';
 
 class FinishScannerState {
   const FinishScannerState({
-    required this.buffer,
     required this.lastResult,
     required this.isSubmitting,
   });
 
-  final String buffer;
   final FinishScanResult lastResult;
   final bool isSubmitting;
 
   factory FinishScannerState.initial() {
     return FinishScannerState(
-      buffer: '',
       lastResult: FinishScanResult.idle(),
       isSubmitting: false,
     );
   }
 
   FinishScannerState copyWith({
-    String? buffer,
     FinishScanResult? lastResult,
     bool? isSubmitting,
   }) {
     return FinishScannerState(
-      buffer: buffer ?? this.buffer,
       lastResult: lastResult ?? this.lastResult,
       isSubmitting: isSubmitting ?? this.isSubmitting,
     );
@@ -47,13 +42,9 @@ class FinishScannerController extends Notifier<FinishScannerState> {
     return FinishScannerState.initial();
   }
 
-  void updateBuffer(String value) {
-    state = state.copyWith(buffer: value);
-  }
-
   Future<FinishScanResult> submitBuffer([String? value]) async {
-    final barcode = (value ?? state.buffer).trim();
-    state = state.copyWith(buffer: '', isSubmitting: true);
+    final barcode = (value ?? '').trim();
+    state = state.copyWith(isSubmitting: true);
 
     final result = await ref
         .read(raceServiceProvider)
@@ -68,7 +59,7 @@ class FinishScannerController extends Notifier<FinishScannerState> {
   Future<FinishScanResult> simulateNextScan() async {
     state = state.copyWith(isSubmitting: true);
     final result = await ref.read(raceServiceProvider).simulateNextFinish();
-    state = state.copyWith(isSubmitting: false, lastResult: result, buffer: '');
+    state = state.copyWith(isSubmitting: false, lastResult: result);
     ref.invalidate(resultsProvider);
     ref.invalidate(checkInProvider);
     return result;

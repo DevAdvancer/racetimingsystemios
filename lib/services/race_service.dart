@@ -5,13 +5,16 @@ import 'package:race_timer/models/check_in_match.dart';
 import 'package:race_timer/models/check_in_result.dart';
 import 'package:race_timer/models/finish_scan_result.dart';
 import 'package:race_timer/models/import_result.dart';
+import 'package:race_timer/models/overall_runner_points_summary.dart';
 import 'package:race_timer/models/printer_status.dart';
 import 'package:race_timer/models/race.dart';
+import 'package:race_timer/models/race_distance_config.dart';
 import 'package:race_timer/models/race_result.dart';
 import 'package:race_timer/models/race_schedule_import.dart';
 import 'package:race_timer/models/race_status.dart';
 import 'package:race_timer/models/roster_import.dart';
 import 'package:race_timer/models/runner.dart';
+import 'package:race_timer/models/runner_points_summary.dart';
 import 'package:race_timer/models/scan_event_log.dart';
 import 'package:race_timer/services/barcode_service.dart';
 import 'package:race_timer/services/database_service.dart';
@@ -44,6 +47,10 @@ class RaceService {
 
   Future<Race?> getRace(int id) => _databaseService.getRace(id);
 
+  Future<List<RaceDistanceConfig>> listRaceDistanceConfigs(int raceId) {
+    return _databaseService.listRaceDistanceConfigs(raceId);
+  }
+
   Future<Race> createRace({
     required String name,
     DateTime? raceDate,
@@ -60,9 +67,45 @@ class RaceService {
     );
   }
 
+  Future<RaceDistanceConfig> saveRaceDistanceConfig({
+    int? id,
+    required int raceId,
+    required String name,
+    required double distanceMiles,
+    bool isPrimary = false,
+  }) async {
+    final trimmedName = name.trim();
+    if (trimmedName.isEmpty) {
+      throw const FormatException('Distance name cannot be empty.');
+    }
+    if (distanceMiles <= 0) {
+      throw const FormatException('Distance must be greater than zero.');
+    }
+
+    if (id == null) {
+      return _databaseService.createRaceDistanceConfig(
+        raceId: raceId,
+        name: trimmedName,
+        distanceMiles: distanceMiles,
+        isPrimary: isPrimary,
+      );
+    }
+
+    return _databaseService.updateRaceDistanceConfig(
+      id: id,
+      raceId: raceId,
+      name: trimmedName,
+      distanceMiles: distanceMiles,
+      isPrimary: isPrimary,
+    );
+  }
+
+  Future<void> deleteRaceDistanceConfig(int id) {
+    return _databaseService.deleteRaceDistanceConfig(id);
+  }
+
   Future<Race?> getRaceScheduledForDate(DateTime date) async {
-    final races = await listRaces();
-    return _findRaceScheduledForDate(races, date);
+    return _databaseService.getRaceScheduledForDate(date);
   }
 
   List<DateTime> parseBulkRaceDates(String rawDates) {
@@ -317,6 +360,97 @@ class RaceService {
     return _databaseService.getRaceResults(raceId);
   }
 
+  Future<List<RunnerPointsSummary>> listRaceRunnerPointsSummaries(int raceId) {
+    return _databaseService.listRaceRunnerPointsSummaries(raceId);
+  }
+
+  Future<List<OverallRunnerPointsSummary>> listOverallRunnerPointsSummaries() {
+    return _databaseService.listOverallRunnerPointsSummaries();
+  }
+
+  Future<RunnerPointsSummary> awardPointsToRunner({
+    required int raceId,
+    required int runnerId,
+    required int points,
+  }) async {
+    if (points <= 0) {
+      throw const FormatException(
+        'Enter a whole number greater than zero for the points to add.',
+      );
+    }
+
+    final updatedSummary = await _databaseService.transaction((db) async {
+      final entry = await _databaseService.getRaceEntryForRunner(
+        runnerId: runnerId,
+        raceId: raceId,
+        executor: db,
+      );
+      if (entry == null) {
+        throw StateError('That racer is not registered in the selected race.');
+      }
+
+      await _databaseService.awardRunnerPoints(
+        runnerId: runnerId,
+        raceId: raceId,
+        points: points,
+        executor: db,
+      );
+
+      final summary = await _databaseService.getRaceRunnerPointsSummary(
+        raceId: raceId,
+        runnerId: runnerId,
+        executor: db,
+      );
+      if (summary == null) {
+        throw StateError('The updated points total could not be loaded.');
+      }
+      return summary;
+    });
+
+    return updatedSummary;
+  }
+
+  Future<OverallRunnerPointsSummary> adjustRunnerPoints({
+    required int raceId,
+    required int runnerId,
+    required int pointsDelta,
+  }) async {
+    if (pointsDelta == 0) {
+      throw const FormatException(
+        'Enter a positive or negative number so the total can be adjusted.',
+      );
+    }
+
+    final updatedSummary = await _databaseService.transaction((db) async {
+      final entry = await _databaseService.getRaceEntryForRunner(
+        runnerId: runnerId,
+        raceId: raceId,
+        executor: db,
+      );
+      if (entry == null) {
+        throw StateError('That racer is not registered in the selected race.');
+      }
+
+      await _databaseService.awardRunnerPoints(
+        runnerId: runnerId,
+        raceId: raceId,
+        points: pointsDelta,
+        executor: db,
+      );
+
+      final summary = await _databaseService.getOverallRunnerPointsSummary(
+        runnerId: runnerId,
+        executor: db,
+      );
+      if (summary == null) {
+        throw StateError('The updated overall points could not be loaded.');
+      }
+      return summary;
+    });
+
+    return updatedSummary;
+  }
+
   Future<Race?> resolveSelectedRace() async {
     final runningRace = await getRunningRace();
     if (runningRace != null) {
@@ -370,6 +504,7 @@ class RaceService {
   Future<CheckInResult> createAdHocRunnerAndPrint(
     String rawName, {
     PaymentStatus paymentStatus = PaymentStatus.pending,
+    int? raceDistanceId,
   }) async {
     final name = rawName.trim();
     if (name.isEmpty) {
@@ -411,12 +546,23 @@ class RaceService {
           raceId: race.id,
           executor: db,
         );
-        entry ??= await _databaseService.createRaceEntry(
-          runnerId: runner.id,
-          raceId: race.id,
-          barcodeValue: runner.barcodeValue,
-          executor: db,
-        );
+        if (entry == null) {
+          entry = await _databaseService.createRaceEntry(
+            runnerId: runner.id,
+            raceId: race.id,
+            barcodeValue: runner.barcodeValue,
+            raceDistanceId: raceDistanceId,
+            executor: db,
+          );
+        } else if (raceDistanceId != null &&
+            entry.raceDistanceId != raceDistanceId) {
+          entry = await _databaseService.updateRaceEntryDetails(
+            entryId: entry.id,
+            raceDistanceId: raceDistanceId,
+            clearRaceDistanceId: false,
+            executor: db,
+          );
+        }
 
         return CheckInMatch(runner: runner, entry: entry, race: race);
       });
@@ -435,6 +581,64 @@ class RaceService {
 
   Future<List<CheckInMatch>> listCheckInRoster(Race race) {
     return _databaseService.listCheckInMatches(race: race);
+  }
+
+  Future<void> updateRosterEntry({
+    required int runnerId,
+    required int entryId,
+    required String name,
+    required String barcodeValue,
+    required PaymentStatus paymentStatus,
+    MembershipStatus membershipStatus = MembershipStatus.unknown,
+    String? city,
+    String? gender,
+    String? bibNumber,
+    int? age,
+    int? raceDistanceId,
+    int? elapsedTimeMs,
+    String? paceOverride,
+  }) async {
+    final trimmedName = name.trim();
+    final trimmedBarcode = barcodeValue.trim();
+    if (trimmedName.isEmpty) {
+      throw const FormatException('Runner name cannot be empty.');
+    }
+    if (trimmedBarcode.isEmpty) {
+      throw const FormatException('Barcode cannot be empty.');
+    }
+    if (age != null && age < 0) {
+      throw const FormatException('Age must be zero or greater.');
+    }
+    if (elapsedTimeMs != null && elapsedTimeMs < 0) {
+      throw const FormatException('Elapsed time cannot be negative.');
+    }
+
+    await _databaseService.transaction((db) async {
+      await _databaseService.updateRunnerDetails(
+        runnerId: runnerId,
+        name: trimmedName,
+        barcodeValue: trimmedBarcode,
+        paymentStatus: paymentStatus,
+        membershipStatus: membershipStatus,
+        city: city,
+        gender: gender,
+        executor: db,
+      );
+      await _databaseService.updateRaceEntryDetails(
+        entryId: entryId,
+        bibNumber: bibNumber,
+        clearBibNumber: bibNumber == null || bibNumber.trim().isEmpty,
+        age: age,
+        clearAge: age == null,
+        raceDistanceId: raceDistanceId,
+        clearRaceDistanceId: raceDistanceId == null,
+        elapsedTimeMs: elapsedTimeMs,
+        clearElapsedTime: elapsedTimeMs == null,
+        paceOverride: paceOverride,
+        clearPaceOverride: paceOverride == null || paceOverride.trim().isEmpty,
+        executor: db,
+      );
+    });
   }
 
   Future<CheckInResult> printCheckInMatch(CheckInMatch match) async {
@@ -596,10 +800,16 @@ class RaceService {
 
     try {
       await _databaseService.transaction((db) async {
+        final distanceConfigs = await _databaseService.listRaceDistanceConfigs(
+          race.id,
+          executor: db,
+        );
+        final defaultDistance = _findPrimaryDistanceConfig(distanceConfigs);
         for (final importedRunner in roster.runners) {
           final trimmedName = importedRunner.name.trim();
           final normalizedName = DatabaseService.normalizeName(trimmedName);
           final importedBarcode = importedRunner.barcodeValue?.trim();
+          final importedDistance = importedRunner.distance?.trim();
           if (trimmedName.isEmpty || normalizedName.isEmpty) {
             invalidRowCount += 1;
             continue;
@@ -608,6 +818,21 @@ class RaceService {
             duplicateCount += 1;
             continue;
           }
+
+          final resolvedDistanceConfig =
+              importedDistance == null || importedDistance.isEmpty
+              ? defaultDistance
+              : _resolveImportedDistanceConfig(
+                  importedDistance,
+                  distanceConfigs,
+                );
+          if (importedDistance != null &&
+              importedDistance.isNotEmpty &&
+              resolvedDistanceConfig == null) {
+            invalidRowCount += 1;
+            continue;
+          }
+          final resolvedDistanceId = resolvedDistanceConfig?.id;
 
           var runner = await _databaseService.getRunnerByNormalizedName(
             normalizedName,
@@ -641,6 +866,8 @@ class RaceService {
               paymentStatus: importedRunner.paymentStatus,
               membershipStatus:
                   importedRunner.membershipStatus ?? MembershipStatus.unknown,
+              city: importedRunner.city,
+              gender: importedRunner.gender,
               executor: db,
             );
 
@@ -654,11 +881,20 @@ class RaceService {
             newRunnerCount += 1;
           } else {
             if (importedRunner.paymentStatus != null ||
-                importedRunner.membershipStatus != null) {
-              runner = await _databaseService.updateRunnerStatuses(
+                importedRunner.membershipStatus != null ||
+                importedRunner.city != null ||
+                importedRunner.gender != null ||
+                runner.name != trimmedName) {
+              runner = await _databaseService.updateRunnerDetails(
                 runnerId: runner.id,
-                paymentStatus: importedRunner.paymentStatus,
-                membershipStatus: importedRunner.membershipStatus,
+                name: trimmedName,
+                barcodeValue: runner.barcodeValue,
+                paymentStatus:
+                    importedRunner.paymentStatus ?? runner.paymentStatus,
+                membershipStatus:
+                    importedRunner.membershipStatus ?? runner.membershipStatus,
+                city: importedRunner.city ?? runner.city,
+                gender: importedRunner.gender ?? runner.gender,
                 executor: db,
               );
             }
@@ -671,6 +907,24 @@ class RaceService {
             executor: db,
           );
           if (existingEntry != null) {
+            final targetDistanceId =
+                resolvedDistanceId ??
+                existingEntry.raceDistanceId ??
+                defaultDistance?.id;
+            if (importedRunner.bibNumber != null ||
+                importedRunner.age != null ||
+                targetDistanceId != existingEntry.raceDistanceId) {
+              await _databaseService.updateRaceEntryDetails(
+                entryId: existingEntry.id,
+                bibNumber: importedRunner.bibNumber,
+                clearBibNumber: false,
+                age: importedRunner.age,
+                clearAge: false,
+                raceDistanceId: targetDistanceId,
+                clearRaceDistanceId: false,
+                executor: db,
+              );
+            }
             duplicateCount += 1;
             continue;
           }
@@ -679,6 +933,9 @@ class RaceService {
             runnerId: runner.id,
             raceId: race.id,
             barcodeValue: runner.barcodeValue,
+            bibNumber: importedRunner.bibNumber,
+            age: importedRunner.age,
+            raceDistanceId: resolvedDistanceId,
             executor: db,
           );
           importedCount += 1;
@@ -965,6 +1222,160 @@ class RaceService {
     return '$minutes:$seconds.$hundredths';
   }
 
+  static int? parseElapsed(String rawValue) {
+    final trimmed = rawValue.trim();
+    if (trimmed.isEmpty) {
+      return null;
+    }
+
+    final parts = trimmed.split(':');
+    if (parts.length < 2 || parts.length > 3) {
+      throw const FormatException(
+        'Time must look like MM:SS, MM:SS.S, or H:MM:SS.S',
+      );
+    }
+
+    final hourPart = parts.length == 3 ? int.tryParse(parts[0]) : 0;
+    final minutePart = int.tryParse(parts[parts.length - 2]);
+    final secondPart = double.tryParse(parts.last);
+    if (hourPart == null || minutePart == null || secondPart == null) {
+      throw const FormatException(
+        'Time must use only numbers, colons, and an optional decimal.',
+      );
+    }
+    if (minutePart < 0 || secondPart < 0 || secondPart >= 60) {
+      throw const FormatException('Minutes and seconds must be valid values.');
+    }
+
+    final totalMilliseconds =
+        (((hourPart * 60) + minutePart) * 60 * 1000) +
+        (secondPart * 1000).round();
+    return totalMilliseconds;
+  }
+
+  static String formatElapsedInput(int? elapsedTimeMs) {
+    return elapsedTimeMs == null ? '' : formatElapsed(elapsedTimeMs);
+  }
+
+  static RaceDistanceConfig? _findPrimaryDistanceConfig(
+    List<RaceDistanceConfig> configs,
+  ) {
+    if (configs.isEmpty) {
+      return null;
+    }
+    for (final config in configs) {
+      if (config.isPrimary) {
+        return config;
+      }
+    }
+    return configs.first;
+  }
+
+  static RaceDistanceConfig? _resolveImportedDistanceConfig(
+    String rawValue,
+    List<RaceDistanceConfig> configs,
+  ) {
+    final trimmed = rawValue.trim();
+    if (trimmed.isEmpty || configs.isEmpty) {
+      return null;
+    }
+
+    final normalized = _normalizeDistanceValue(trimmed);
+    if (normalized.isNotEmpty) {
+      for (final config in configs) {
+        if (_normalizeDistanceValue(config.sectionLabel) == normalized) {
+          return config;
+        }
+      }
+      for (final config in configs) {
+        if (_normalizeDistanceValue(config.name) == normalized) {
+          return config;
+        }
+      }
+    }
+
+    final parsedMiles = _parseDistanceMilesValue(trimmed);
+    if (parsedMiles == null) {
+      return null;
+    }
+
+    RaceDistanceConfig? matchedConfig;
+    for (final config in configs) {
+      if ((config.distanceMiles - parsedMiles).abs() > 0.01) {
+        continue;
+      }
+      if (matchedConfig != null) {
+        return null;
+      }
+      matchedConfig = config;
+    }
+    return matchedConfig;
+  }
+
+  static String _normalizeDistanceValue(String value) {
+    return value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+  }
+
+  static double? _parseDistanceMilesValue(String value) {
+    final match = RegExp(r'(\d+(?:\.\d+)?)').firstMatch(value);
+    if (match == null) {
+      return null;
+    }
+    return double.tryParse(match.group(1)!);
+  }
+
+  static String formatDistanceMiles(double? distanceMiles) {
+    if (distanceMiles == null) {
+      return 'Distance not set';
+    }
+    if (distanceMiles == distanceMiles.roundToDouble()) {
+      return '${distanceMiles.toStringAsFixed(0)} miles';
+    }
+    if ((distanceMiles * 10) == (distanceMiles * 10).roundToDouble()) {
+      return '${distanceMiles.toStringAsFixed(1)} miles';
+    }
+    return '${distanceMiles.toStringAsFixed(2).replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\\.$'), '')} miles';
+  }
+
+  static String buildDistanceLabel(String? name, double? distanceMiles) {
+    if (name == null || name.trim().isEmpty) {
+      return formatDistanceMiles(distanceMiles);
+    }
+    if (distanceMiles == null) {
+      return name.trim();
+    }
+    return '${name.trim()} - ${formatDistanceMiles(distanceMiles)}';
+  }
+
+  static String formatPace({
+    required int? elapsedTimeMs,
+    required double? distanceMiles,
+    String? paceOverride,
+  }) {
+    final trimmedOverride = paceOverride?.trim();
+    if (trimmedOverride != null && trimmedOverride.isNotEmpty) {
+      return trimmedOverride;
+    }
+    if (elapsedTimeMs == null || distanceMiles == null || distanceMiles <= 0) {
+      return '';
+    }
+
+    final paceMilliseconds = (elapsedTimeMs / distanceMiles).round();
+    final duration = Duration(
+      milliseconds: paceMilliseconds < 0 ? 0 : paceMilliseconds,
+    );
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes
+        .remainder(60)
+        .toString()
+        .padLeft(hours > 0 ? 2 : 1, '0');
+    final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
+    if (hours > 0) {
+      return '$hours:$minutes:$seconds/M';
+    }
+    return '$minutes:$seconds/M';
+  }
+
   static String formatFinishTime(DateTime? timestamp) {
     if (timestamp == null) {
       return '--';
@@ -1059,15 +1470,6 @@ class RaceService {
     }
 
     return matches;
-  }
-
-  Race? _findRaceScheduledForDate(List<Race> races, DateTime targetDate) {
-    for (final race in races) {
-      if (_isSameLocalDate(race.raceDate, targetDate)) {
-        return race;
-      }
-    }
-    return null;
   }
 
   bool _isSameLocalDate(DateTime left, DateTime right) {

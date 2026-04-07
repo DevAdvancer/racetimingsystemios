@@ -12,7 +12,16 @@ class RaceResultRow {
     required this.earlyStart,
     required this.finishTime,
     required this.elapsedTimeMs,
+    this.raceDistanceId,
+    this.distanceName,
+    this.distanceMiles,
+    this.paceOverride,
     this.paymentStatus = PaymentStatus.paid,
+    this.membershipStatus = MembershipStatus.unknown,
+    this.city,
+    this.bibNumber,
+    this.age,
+    this.gender,
   });
 
   final int entryId;
@@ -25,7 +34,16 @@ class RaceResultRow {
   final bool earlyStart;
   final DateTime? finishTime;
   final int? elapsedTimeMs;
+  final int? raceDistanceId;
+  final String? distanceName;
+  final double? distanceMiles;
+  final String? paceOverride;
   final PaymentStatus paymentStatus;
+  final MembershipStatus membershipStatus;
+  final String? city;
+  final String? bibNumber;
+  final int? age;
+  final String? gender;
 
   String get statusLabel {
     if (finishTime != null) {
@@ -64,10 +82,21 @@ class RaceResultRow {
               isUtc: true,
             ),
       elapsedTimeMs: map['elapsed_time_ms'] as int?,
+      raceDistanceId: map['race_distance_id'] as int?,
+      distanceName: map['distance_name'] as String?,
+      distanceMiles: (map['distance_miles'] as num?)?.toDouble(),
+      paceOverride: map['pace_override'] as String?,
       paymentStatus: PaymentStatusX.fromDb(
         map['runner_payment_status'] as String?,
         legacyPaid: map['runner_paid'],
       ),
+      membershipStatus: MembershipStatusX.fromDb(
+        map['runner_membership_status'] as String?,
+      ),
+      city: map['runner_city'] as String?,
+      bibNumber: map['bib_number'] as String?,
+      age: map['age'] as int?,
+      gender: map['runner_gender'] as String?,
     );
   }
 }

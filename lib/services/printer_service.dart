@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:race_timer/core/constants.dart';
 import 'package:race_timer/core/platform_support.dart';
+import 'package:race_timer/core/user_facing_error.dart';
 import 'package:race_timer/models/printer_status.dart';
 import 'package:race_timer/services/barcode_service.dart';
 import 'package:race_timer/services/settings_service.dart';
@@ -34,25 +35,26 @@ class MethodChannelPrinterService implements PrinterService {
     }
 
     try {
-      final response = await _channel.invokeMapMethod<Object?, Object?>(
-        'configure',
-        <String, Object?>{
-          'host': settings.printerHost,
-          'media': settings.printerMedia,
-          'connectionType': settings.printerConnectionType.storageValue,
-        },
-      );
+      final response = await _channel
+          .invokeMapMethod<Object?, Object?>('configure', <String, Object?>{
+            'host': settings.printerHost,
+            'media': settings.printerMedia,
+            'connectionType': settings.printerConnectionType.storageValue,
+          });
       if (response == null) {
         return PrinterStatus.error(
           host: settings.printerHost,
-          message: 'No printer response received.',
+          message: 'The printer did not respond. Please try again.',
         );
       }
       return PrinterStatus.fromMap(response);
     } on PlatformException catch (error) {
       return PrinterStatus.error(
         host: settings.printerHost,
-        message: error.message ?? 'Printer configuration failed.',
+        message: userFacingErrorMessage(
+          error,
+          fallback: 'The printer could not be checked right now.',
+        ),
       );
     }
   }
@@ -71,25 +73,26 @@ class MethodChannelPrinterService implements PrinterService {
     }
 
     try {
-      final response = await _channel.invokeMapMethod<Object?, Object?>(
-        'getStatus',
-        <String, Object?>{
-          'host': settings.printerHost,
-          'media': settings.printerMedia,
-          'connectionType': settings.printerConnectionType.storageValue,
-        },
-      );
+      final response = await _channel
+          .invokeMapMethod<Object?, Object?>('getStatus', <String, Object?>{
+            'host': settings.printerHost,
+            'media': settings.printerMedia,
+            'connectionType': settings.printerConnectionType.storageValue,
+          });
       if (response == null) {
         return PrinterStatus.error(
           host: settings.printerHost,
-          message: 'Unable to read printer status.',
+          message: 'The printer status could not be read right now.',
         );
       }
       return PrinterStatus.fromMap(response);
     } on PlatformException catch (error) {
       return PrinterStatus.error(
         host: settings.printerHost,
-        message: error.message ?? 'Printer status failed.',
+        message: userFacingErrorMessage(
+          error,
+          fallback: 'The printer status could not be read right now.',
+        ),
       );
     }
   }
@@ -120,14 +123,17 @@ class MethodChannelPrinterService implements PrinterService {
       if (response == null) {
         return PrinterStatus.error(
           host: settings.printerHost,
-          message: 'Printer did not acknowledge the label request.',
+          message: 'The printer did not confirm the label request.',
         );
       }
       return PrinterStatus.fromMap(response);
     } on PlatformException catch (error) {
       return PrinterStatus.error(
         host: settings.printerHost,
-        message: error.message ?? 'Printing failed.',
+        message: userFacingErrorMessage(
+          error,
+          fallback: 'The label could not be printed right now.',
+        ),
       );
     }
   }
@@ -146,25 +152,26 @@ class MethodChannelPrinterService implements PrinterService {
     }
 
     try {
-      final response = await _channel.invokeMapMethod<Object?, Object?>(
-        'testPrint',
-        <String, Object?>{
-          'host': settings.printerHost,
-          'media': settings.printerMedia,
-          'connectionType': settings.printerConnectionType.storageValue,
-        },
-      );
+      final response = await _channel
+          .invokeMapMethod<Object?, Object?>('testPrint', <String, Object?>{
+            'host': settings.printerHost,
+            'media': settings.printerMedia,
+            'connectionType': settings.printerConnectionType.storageValue,
+          });
       if (response == null) {
         return PrinterStatus.error(
           host: settings.printerHost,
-          message: 'No test print response received.',
+          message: 'The printer did not respond to the print check.',
         );
       }
       return PrinterStatus.fromMap(response);
     } on PlatformException catch (error) {
       return PrinterStatus.error(
         host: settings.printerHost,
-        message: error.message ?? 'Test print failed.',
+        message: userFacingErrorMessage(
+          error,
+          fallback: 'The print check could not be completed right now.',
+        ),
       );
     }
   }

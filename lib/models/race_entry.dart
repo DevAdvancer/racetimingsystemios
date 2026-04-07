@@ -9,6 +9,10 @@ class RaceEntry {
     required this.earlyStart,
     required this.finishTime,
     required this.elapsedTimeMs,
+    this.raceDistanceId,
+    this.paceOverride,
+    this.bibNumber,
+    this.age,
   });
 
   final int id;
@@ -20,6 +24,10 @@ class RaceEntry {
   final bool earlyStart;
   final DateTime? finishTime;
   final int? elapsedTimeMs;
+  final int? raceDistanceId;
+  final String? paceOverride;
+  final String? bibNumber;
+  final int? age;
 
   bool get isCheckedIn => checkedInAt != null;
   bool get isFinished => finishTime != null;
@@ -38,6 +46,14 @@ class RaceEntry {
     bool clearFinishTime = false,
     int? elapsedTimeMs,
     bool clearElapsedTime = false,
+    int? raceDistanceId,
+    bool clearRaceDistanceId = false,
+    String? paceOverride,
+    bool clearPaceOverride = false,
+    String? bibNumber,
+    bool clearBibNumber = false,
+    int? age,
+    bool clearAge = false,
   }) {
     return RaceEntry(
       id: id ?? this.id,
@@ -51,6 +67,14 @@ class RaceEntry {
       elapsedTimeMs: clearElapsedTime
           ? null
           : elapsedTimeMs ?? this.elapsedTimeMs,
+      raceDistanceId: clearRaceDistanceId
+          ? null
+          : raceDistanceId ?? this.raceDistanceId,
+      paceOverride: clearPaceOverride
+          ? null
+          : paceOverride ?? this.paceOverride,
+      bibNumber: clearBibNumber ? null : bibNumber ?? this.bibNumber,
+      age: clearAge ? null : age ?? this.age,
     );
   }
 
@@ -65,6 +89,10 @@ class RaceEntry {
       'early_start': earlyStart ? 1 : 0,
       'finish_time': finishTime?.toUtc().millisecondsSinceEpoch,
       'elapsed_time_ms': elapsedTimeMs,
+      'race_distance_id': raceDistanceId,
+      'pace_override': paceOverride,
+      'bib_number': bibNumber,
+      'age': age,
     };
   }
 
@@ -94,6 +122,10 @@ class RaceEntry {
               isUtc: true,
             ),
       elapsedTimeMs: map['elapsed_time_ms'] as int?,
+      raceDistanceId: map['race_distance_id'] as int?,
+      paceOverride: map['pace_override'] as String?,
+      bibNumber: map['bib_number'] as String?,
+      age: map['age'] as int?,
     );
   }
 }

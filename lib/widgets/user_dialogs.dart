@@ -78,13 +78,13 @@ class _UserDialogShell extends StatelessWidget {
       ),
       UserDialogTone.success => (
         icon: Icons.check_circle_outline,
-        iconColor: const Color(0xFF7CEAB3),
-        accent: const Color(0xFF142920),
+        iconColor: colorScheme.secondary,
+        accent: colorScheme.secondaryContainer,
       ),
       UserDialogTone.warning => (
         icon: Icons.warning_amber_rounded,
-        iconColor: const Color(0xFFFFD59D),
-        accent: const Color(0xFF392916),
+        iconColor: colorScheme.tertiary,
+        accent: colorScheme.tertiaryContainer,
       ),
       UserDialogTone.error => (
         icon: Icons.error_outline,
@@ -121,9 +121,9 @@ class _UserDialogShell extends StatelessWidget {
       ),
       content: Text(
         message,
-        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-          color: colorScheme.onSurfaceVariant,
-        ),
+        style: Theme.of(
+          context,
+        ).textTheme.bodyLarge?.copyWith(color: colorScheme.onSurfaceVariant),
       ),
       actions: actions,
     );

@@ -7,6 +7,7 @@ import 'package:race_timer/models/finish_scan_result.dart';
 import 'package:race_timer/models/printer_status.dart';
 import 'package:race_timer/models/race_schedule_import.dart';
 import 'package:race_timer/models/roster_import.dart';
+import 'package:race_timer/models/runner.dart';
 import 'package:race_timer/models/scan_event_log.dart';
 import 'package:race_timer/services/barcode_service.dart';
 import 'package:race_timer/services/database_service.dart';
@@ -196,6 +197,234 @@ void main() {
   );
 
   test(
+    'importRoster stores sample race-day fields on the runner and entry',
+    () async {
+      final race = await raceService.createRace(name: 'Week 1');
+      await raceService.importRoster(
+        const RosterImport(
+          sourceName: 'week1.xlsx',
+          runners: <ImportedRunnerData>[
+            ImportedRunnerData(
+              name: 'Jordan',
+              city: 'Southbury',
+              bibNumber: '822',
+              age: 39,
+              gender: 'M',
+              paymentStatus: PaymentStatus.paid,
+            ),
+          ],
+        ),
+      );
+
+      final results = await raceService.getResults(race.id);
+
+      expect(results.single.city, 'Southbury');
+      expect(results.single.bibNumber, '822');
+      expect(results.single.age, 39);
+      expect(results.single.gender, 'M');
+      expect(results.single.paymentStatus, PaymentStatus.paid);
+    },
+  );
+
+  test(
+    'updateRosterEntry edits racer data and keeps the barcode synced',
+    () async {
+      final raceA = await raceService.createRace(name: 'Week 1');
+      await raceService.importRoster(
+        const RosterImport(
+          sourceName: 'week1.xlsx',
+          runners: <ImportedRunnerData>[ImportedRunnerData(name: 'Jordan')],
+        ),
+      );
+      final weekOneLookup = await raceService.lookupRunnerForCheckIn('Jordan');
+
+      await raceService.createRace(name: 'Week 2');
+      await raceService.importRoster(
+        const RosterImport(
+          sourceName: 'week2.xlsx',
+          runners: <ImportedRunnerData>[ImportedRunnerData(name: 'Jordan')],
+        ),
+      );
+
+      await raceService.updateRosterEntry(
+        runnerId: weekOneLookup.selectedMatch!.runner.id,
+        entryId: weekOneLookup.selectedMatch!.entry.id,
+        name: 'Jordan Lee',
+        barcodeValue: 'RT-009999',
+        paymentStatus: PaymentStatus.pending,
+        city: 'Southbury',
+        gender: 'M',
+        bibNumber: '822',
+        age: 39,
+      );
+
+      final weekOneResults = await raceService.getResults(raceA.id);
+      final weekTwoLookup = await raceService.lookupRunnerForCheckIn(
+        'Jordan Lee',
+      );
+
+      expect(weekOneResults.single.runnerName, 'Jordan Lee');
+      expect(weekOneResults.single.city, 'Southbury');
+      expect(weekOneResults.single.bibNumber, '822');
+      expect(weekOneResults.single.barcodeValue, 'RT-009999');
+      expect(weekOneResults.single.paymentStatus, PaymentStatus.pending);
+      expect(weekTwoLookup.selectedMatch?.entry.barcodeValue, 'RT-009999');
+    },
+  );
+
+  test(
+    'importRoster assigns the primary alternate distance by default',
+    () async {
+      final race = await raceService.createRace(name: 'Squire Road');
+      await raceService.saveRaceDistanceConfig(
+        raceId: race.id,
+        name: 'Full Distance',
+        distanceMiles: 5,
+        isPrimary: true,
+      );
+      await raceService.saveRaceDistanceConfig(
+        raceId: race.id,
+        name: 'Alternate Distance',
+        distanceMiles: 3.4,
+      );
+
+      await raceService.importRoster(
+        const RosterImport(
+          sourceName: 'week1.xlsx',
+          runners: <ImportedRunnerData>[ImportedRunnerData(name: 'Jordan')],
+        ),
+      );
+
+      final results = await raceService.getResults(race.id);
+
+      expect(results.single.distanceName, 'Full Distance');
+      expect(results.single.distanceMiles, 5);
+      expect(
+        RaceService.formatPace(
+          elapsedTimeMs: results.single.elapsedTimeMs,
+          distanceMiles: results.single.distanceMiles,
+          paceOverride: results.single.paceOverride,
+        ),
+        '',
+      );
+    },
+  );
+
+  test(
+    'importRoster assigns an alternate distance from the optional import column',
+    () async {
+      final race = await raceService.createRace(name: 'Squire Road');
+      await raceService.saveRaceDistanceConfig(
+        raceId: race.id,
+        name: 'Full Distance',
+        distanceMiles: 5,
+        isPrimary: true,
+      );
+      await raceService.saveRaceDistanceConfig(
+        raceId: race.id,
+        name: 'Alternate Distance',
+        distanceMiles: 3.4,
+      );
+
+      final importResult = await raceService.importRoster(
+        const RosterImport(
+          sourceName: 'week1.xlsx',
+          runners: <ImportedRunnerData>[
+            ImportedRunnerData(
+              name: 'Jordan',
+              distance: 'Alternate Distance - 3.4 miles',
+            ),
+          ],
+        ),
+      );
+
+      final results = await raceService.getResults(race.id);
+
+      expect(importResult.isSuccess, isTrue);
+      expect(importResult.importedCount, 1);
+      expect(importResult.invalidRowCount, 0);
+      expect(results.single.distanceName, 'Alternate Distance');
+      expect(results.single.distanceMiles, 3.4);
+    },
+  );
+
+  test(
+    'importRoster skips rows with an unknown imported distance value',
+    () async {
+      final race = await raceService.createRace(name: 'Squire Road');
+      await raceService.saveRaceDistanceConfig(
+        raceId: race.id,
+        name: 'Full Distance',
+        distanceMiles: 5,
+        isPrimary: true,
+      );
+
+      final importResult = await raceService.importRoster(
+        const RosterImport(
+          sourceName: 'week1.xlsx',
+          runners: <ImportedRunnerData>[
+            ImportedRunnerData(name: 'Jordan', distance: 'Alternate Distance'),
+          ],
+        ),
+      );
+
+      final results = await raceService.getResults(race.id);
+      final lookup = await raceService.lookupRunnerForCheckIn('Jordan');
+
+      expect(importResult.isSuccess, isTrue);
+      expect(importResult.importedCount, 0);
+      expect(importResult.invalidRowCount, 1);
+      expect(results, isEmpty);
+      expect(lookup.outcome, CheckInOutcome.notFound);
+    },
+  );
+
+  test(
+    'updateRosterEntry saves alternate distance, elapsed time, and pace override',
+    () async {
+      final race = await raceService.createRace(name: 'Squire Road');
+      final fullDistance = await raceService.saveRaceDistanceConfig(
+        raceId: race.id,
+        name: 'Full Distance',
+        distanceMiles: 5,
+        isPrimary: true,
+      );
+      final alternateDistance = await raceService.saveRaceDistanceConfig(
+        raceId: race.id,
+        name: 'Alternate Distance',
+        distanceMiles: 3.4,
+      );
+
+      await raceService.importRoster(
+        const RosterImport(
+          sourceName: 'week1.xlsx',
+          runners: <ImportedRunnerData>[ImportedRunnerData(name: 'Jordan')],
+        ),
+      );
+      final lookup = await raceService.lookupRunnerForCheckIn('Jordan');
+
+      await raceService.updateRosterEntry(
+        runnerId: lookup.selectedMatch!.runner.id,
+        entryId: lookup.selectedMatch!.entry.id,
+        name: 'Jordan',
+        barcodeValue: lookup.selectedMatch!.entry.barcodeValue,
+        paymentStatus: PaymentStatus.paid,
+        raceDistanceId: alternateDistance.id,
+        elapsedTimeMs: RaceService.parseElapsed('44:12.0'),
+        paceOverride: '13:00/M',
+      );
+
+      final results = await raceService.getResults(race.id);
+
+      expect(results.single.distanceName, 'Alternate Distance');
+      expect(results.single.distanceMiles, 3.4);
+      expect(results.single.paceOverride, '13:00/M');
+      expect(results.single.elapsedTimeMs, RaceService.parseElapsed('44:12.0'));
+      expect(fullDistance.sectionLabel, 'Full Distance - 5 miles');
+    },
+  );
+
+  test(
     'printCheckInMatch returns a printer warning but keeps the barcode',
     () async {
       await raceService.createRace(name: 'Spring 5K');
@@ -246,6 +475,63 @@ void main() {
     expect(lookup.selectedMatch?.runner.name, 'Morgan Diaz');
     expect(lookup.selectedMatch?.entry.barcodeValue, 'RT-000001');
   });
+
+  test('awardPointsToRunner adds to an existing saved total', () async {
+    final race = await raceService.createRace(name: 'Week 1');
+    await raceService.importRoster(
+      const RosterImport(
+        sourceName: 'week1.xlsx',
+        runners: <ImportedRunnerData>[ImportedRunnerData(name: 'Casey Lee')],
+      ),
+    );
+    final lookup = await raceService.lookupRunnerForCheckIn('Casey Lee');
+
+    final firstAward = await raceService.awardPointsToRunner(
+      raceId: race.id,
+      runnerId: lookup.selectedMatch!.runner.id,
+      points: 10,
+    );
+    final secondAward = await raceService.awardPointsToRunner(
+      raceId: race.id,
+      runnerId: lookup.selectedMatch!.runner.id,
+      points: 5,
+    );
+    final summaries = await raceService.listRaceRunnerPointsSummaries(race.id);
+
+    expect(firstAward.totalPoints, 10);
+    expect(secondAward.totalPoints, 15);
+    expect(secondAward.pointsInRace, 15);
+    expect(summaries.single.totalPoints, 15);
+  });
+
+  test(
+    'adjustRunnerPoints can add and subtract from the overall total',
+    () async {
+      final race = await raceService.createRace(name: 'Week 1');
+      await raceService.importRoster(
+        const RosterImport(
+          sourceName: 'week1.xlsx',
+          runners: <ImportedRunnerData>[ImportedRunnerData(name: 'Casey Lee')],
+        ),
+      );
+      final lookup = await raceService.lookupRunnerForCheckIn('Casey Lee');
+      final runnerId = lookup.selectedMatch!.runner.id;
+
+      final added = await raceService.adjustRunnerPoints(
+        raceId: race.id,
+        runnerId: runnerId,
+        pointsDelta: 12,
+      );
+      final removed = await raceService.adjustRunnerPoints(
+        raceId: race.id,
+        runnerId: runnerId,
+        pointsDelta: -5,
+      );
+
+      expect(added.totalPoints, 12);
+      expect(removed.totalPoints, 7);
+    },
+  );
 
   test(
     'createAdHocRunnerAndPrint reuses an existing runner barcode in a new race',

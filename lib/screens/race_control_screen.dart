@@ -7,6 +7,7 @@ import 'package:race_timer/models/race.dart';
 import 'package:race_timer/providers/admin_access_provider.dart';
 import 'package:race_timer/providers/race_provider.dart';
 import 'package:race_timer/services/race_service.dart';
+import 'package:race_timer/widgets/branding.dart';
 import 'package:race_timer/widgets/race_clock.dart';
 import 'package:race_timer/widgets/status_banner.dart';
 import 'package:race_timer/widgets/user_dialogs.dart';
@@ -20,7 +21,7 @@ class RaceControlScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Race Control'),
+        title: const BrandAppBarTitle(pageTitle: 'Race Control'),
         actions: [
           IconButton(
             tooltip: 'Return to start screen',

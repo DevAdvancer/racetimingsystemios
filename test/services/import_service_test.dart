@@ -89,6 +89,26 @@ void main() {
       expect(roster.runners.first.membershipStatus, MembershipStatus.member);
     });
 
+    test('parses sample day-run columns including city bib age and gender', () {
+      final bytes = Uint8List.fromList(
+        'Name,City,Bib No,Age,Gend,Barcode,Payment Status,Distance\nJordan Lee,Southbury,822,39,M,RT-000777,Paid,Alternate Distance - 3.4 miles\n'
+            .codeUnits,
+      );
+
+      final roster = service.parseRosterFile(
+        fileName: 'sample-race-day.csv',
+        bytes: bytes,
+      );
+
+      expect(roster.runners, hasLength(1));
+      expect(roster.runners.first.city, 'Southbury');
+      expect(roster.runners.first.bibNumber, '822');
+      expect(roster.runners.first.age, 39);
+      expect(roster.runners.first.gender, 'M');
+      expect(roster.runners.first.paymentStatus, PaymentStatus.paid);
+      expect(roster.runners.first.distance, 'Alternate Distance - 3.4 miles');
+    });
+
     test('tracks invalid rows with missing runner names', () {
       final bytes = Uint8List.fromList(
         'Name,Barcode\nJordan Lee,RT-000777\n,RT-000888\n'.codeUnits,

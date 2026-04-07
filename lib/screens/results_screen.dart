@@ -5,6 +5,7 @@ import 'package:race_timer/core/constants.dart';
 import 'package:race_timer/core/user_facing_error.dart';
 import 'package:race_timer/providers/admin_access_provider.dart';
 import 'package:race_timer/providers/results_provider.dart';
+import 'package:race_timer/widgets/branding.dart';
 import 'package:race_timer/widgets/results_table.dart';
 import 'package:race_timer/widgets/status_banner.dart';
 
@@ -20,7 +21,7 @@ class ResultsScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Live Results'),
+        title: const BrandAppBarTitle(pageTitle: 'Live Results'),
         actions: [
           IconButton(
             tooltip: 'Return to start screen',

@@ -74,6 +74,8 @@ class Runner {
     required this.paymentStatus,
     required this.membershipStatus,
     required this.createdAt,
+    this.city,
+    this.gender,
   });
 
   final int id;
@@ -83,6 +85,8 @@ class Runner {
   final PaymentStatus paymentStatus;
   final MembershipStatus membershipStatus;
   final DateTime createdAt;
+  final String? city;
+  final String? gender;
 
   bool get paid => paymentStatus.countsAsPaid;
 
@@ -94,6 +98,10 @@ class Runner {
     PaymentStatus? paymentStatus,
     MembershipStatus? membershipStatus,
     DateTime? createdAt,
+    String? city,
+    bool clearCity = false,
+    String? gender,
+    bool clearGender = false,
   }) {
     return Runner(
       id: id ?? this.id,
@@ -103,6 +111,8 @@ class Runner {
       paymentStatus: paymentStatus ?? this.paymentStatus,
       membershipStatus: membershipStatus ?? this.membershipStatus,
       createdAt: createdAt ?? this.createdAt,
+      city: clearCity ? null : city ?? this.city,
+      gender: clearGender ? null : gender ?? this.gender,
     );
   }
 
@@ -116,6 +126,8 @@ class Runner {
       'payment_status': paymentStatus.dbValue,
       'membership_status': membershipStatus.dbValue,
       'created_at': createdAt.toUtc().millisecondsSinceEpoch,
+      'city': city,
+      'gender': gender,
     };
   }
 
@@ -136,6 +148,8 @@ class Runner {
         map['created_at'] as int,
         isUtc: true,
       ),
+      city: map['city'] as String?,
+      gender: map['gender'] as String?,
     );
   }
 }

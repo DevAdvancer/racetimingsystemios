@@ -1,5 +1,24 @@
 import 'package:race_timer/core/constants.dart';
 
+enum AppThemeMode {
+  light,
+  dark;
+
+  String get label => switch (this) {
+    AppThemeMode.light => 'Light',
+    AppThemeMode.dark => 'Dark',
+  };
+
+  String get storageValue => name;
+
+  static AppThemeMode fromStorage(String? value) {
+    return AppThemeMode.values.firstWhere(
+      (mode) => mode.storageValue == value,
+      orElse: () => AppThemeMode.light,
+    );
+  }
+}
+
 enum PrinterConnectionType {
   bluetooth,
   network;
@@ -33,6 +52,7 @@ enum PrinterConnectionType {
 
 class AppSettings {
   const AppSettings({
+    required this.themeMode,
     required this.dryRunMode,
     required this.printerHost,
     required this.printerMedia,
@@ -43,6 +63,7 @@ class AppSettings {
     required this.lastScannerCheckValue,
   });
 
+  final AppThemeMode themeMode;
   final bool dryRunMode;
   final String printerHost;
   final String printerMedia;
@@ -57,6 +78,7 @@ class AppSettings {
 
   factory AppSettings.defaults() {
     return const AppSettings(
+      themeMode: AppThemeMode.light,
       dryRunMode: false,
       printerHost: '',
       printerMedia: AppConstants.defaultPrinterMedia,
@@ -69,6 +91,7 @@ class AppSettings {
   }
 
   AppSettings copyWith({
+    AppThemeMode? themeMode,
     bool? dryRunMode,
     String? printerHost,
     String? printerMedia,
@@ -81,6 +104,7 @@ class AppSettings {
     bool clearScannerCheck = false,
   }) {
     return AppSettings(
+      themeMode: themeMode ?? this.themeMode,
       dryRunMode: dryRunMode ?? this.dryRunMode,
       printerHost: printerHost ?? this.printerHost,
       printerMedia: printerMedia ?? this.printerMedia,

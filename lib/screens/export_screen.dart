@@ -10,6 +10,7 @@ import 'package:race_timer/providers/admin_access_provider.dart';
 import 'package:race_timer/providers/race_provider.dart';
 import 'package:race_timer/providers/results_provider.dart';
 import 'package:race_timer/services/export_service.dart';
+import 'package:race_timer/widgets/branding.dart';
 import 'package:race_timer/widgets/status_banner.dart';
 
 class ExportScreen extends ConsumerStatefulWidget {
@@ -24,7 +25,7 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
   bool _exporting = false;
   int? _selectedRaceId;
 
-  Future<void> _export({required Race race}) async {
+  Future<void> _exportCsv({required Race race}) async {
     setState(() {
       _exporting = true;
       _lastResult = null;
@@ -58,6 +59,40 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
     }
   }
 
+  Future<void> _exportPdf({required Race race}) async {
+    setState(() {
+      _exporting = true;
+      _lastResult = null;
+    });
+
+    try {
+      final rows = await ref.read(raceResultsProvider(race.id).future);
+
+      final result = await ref
+          .read(exportServiceProvider)
+          .exportResultsPdf(race: race, rows: rows);
+      setState(() {
+        _lastResult = result;
+      });
+    } catch (error) {
+      setState(() {
+        _lastResult = ExportResult.failure(
+          userFacingErrorMessage(
+            error,
+            fallback:
+                'The results PDF could not be prepared right now. Please try again.',
+          ),
+        );
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _exporting = false;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentRaceAsync = ref.watch(currentRaceProvider);
@@ -74,7 +109,7 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Export Results'),
+        title: const BrandAppBarTitle(pageTitle: 'Export Results'),
         actions: [
           IconButton(
             tooltip: 'Return to start screen',
@@ -97,7 +132,7 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
                   title: selectedRace?.name ?? 'No race selected',
                   message: races.isEmpty
                       ? 'Create a race before exporting results.'
-                      : 'Choose a race and export one complete CSV with runner names, barcodes, start times, finish times, elapsed times, and early-start flags.',
+                      : 'Choose a race and export either a full CSV or a printable PDF-style results sheet with the race-day columns.',
                   tone: races.isEmpty
                       ? StatusBannerTone.warning
                       : StatusBannerTone.info,
@@ -169,14 +204,29 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
               ],
               SizedBox(
                 width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _exporting || selectedRace == null
-                      ? null
-                      : () => _export(race: selectedRace),
-                  icon: const Icon(Icons.download),
-                  label: Text(
-                    _exporting ? 'Exporting...' : 'Export Selected Race CSV',
-                  ),
+                child: Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    ElevatedButton.icon(
+                      onPressed: _exporting || selectedRace == null
+                          ? null
+                          : () => _exportCsv(race: selectedRace),
+                      icon: const Icon(Icons.table_view_outlined),
+                      label: Text(
+                        _exporting
+                            ? 'Exporting...'
+                            : 'Export Selected Race CSV',
+                      ),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: _exporting || selectedRace == null
+                          ? null
+                          : () => _exportPdf(race: selectedRace),
+                      icon: const Icon(Icons.picture_as_pdf_outlined),
+                      label: const Text('Export Selected Race PDF'),
+                    ),
+                  ],
                 ),
               ),
               if (_lastResult != null) ...[
@@ -251,7 +301,7 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
               ),
             const SizedBox(height: 12),
             Text(
-              'The CSV includes runner name, barcode, payment status, start time, finish time, elapsed time, early-start flag, and supporting race status fields.',
+              'The exports include the race-day columns from the roster template, including name, city, Bib No., age, gender, barcode, payment status, and timing details.',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
           ],

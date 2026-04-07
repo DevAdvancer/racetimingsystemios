@@ -6,6 +6,7 @@ import 'package:race_timer/core/user_facing_error.dart';
 import 'package:race_timer/providers/admin_access_provider.dart';
 import 'package:race_timer/providers/diagnostics_provider.dart';
 import 'package:race_timer/providers/race_provider.dart';
+import 'package:race_timer/widgets/branding.dart';
 import 'package:race_timer/widgets/status_banner.dart';
 import 'package:race_timer/widgets/user_dialogs.dart';
 
@@ -18,7 +19,7 @@ class DiagnosticsScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Diagnostics'),
+        title: const BrandAppBarTitle(pageTitle: 'Diagnostics'),
         actions: [
           IconButton(
             tooltip: 'Return to start screen',

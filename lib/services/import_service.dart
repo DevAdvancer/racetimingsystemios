@@ -95,6 +95,11 @@ class ImportService {
     final detectedFirstNameIndex = _detectFirstNameColumn(header);
     final detectedLastNameIndex = _detectLastNameColumn(header);
     final detectedBarcodeIndex = _detectBarcodeColumn(header);
+    final detectedCityIndex = _detectCityColumn(header);
+    final detectedBibNumberIndex = _detectBibNumberColumn(header);
+    final detectedAgeIndex = _detectAgeColumn(header);
+    final detectedGenderIndex = _detectGenderColumn(header);
+    final detectedDistanceIndex = _detectDistanceColumn(header);
     final detectedPaymentStatusIndex = _detectPaymentStatusColumn(header);
     final detectedMembershipStatusIndex = _detectMembershipStatusColumn(header);
     final hasHeader = _looksLikeHeader(header);
@@ -117,6 +122,21 @@ class ImportService {
       final barcodeValue = detectedBarcodeIndex == null
           ? null
           : _readColumn(row, detectedBarcodeIndex);
+      final city = detectedCityIndex == null
+          ? null
+          : _readOptionalColumn(row, detectedCityIndex);
+      final bibNumber = detectedBibNumberIndex == null
+          ? null
+          : _readOptionalColumn(row, detectedBibNumberIndex);
+      final age = detectedAgeIndex == null
+          ? null
+          : _parseAge(_readColumn(row, detectedAgeIndex));
+      final gender = detectedGenderIndex == null
+          ? null
+          : _readOptionalColumn(row, detectedGenderIndex);
+      final distance = detectedDistanceIndex == null
+          ? null
+          : _readOptionalColumn(row, detectedDistanceIndex);
       final paymentStatus = detectedPaymentStatusIndex == null
           ? null
           : _parsePaymentStatus(_readColumn(row, detectedPaymentStatusIndex));
@@ -134,6 +154,11 @@ class ImportService {
               : barcodeValue,
           paymentStatus: paymentStatus,
           membershipStatus: membershipStatus,
+          distance: distance,
+          city: city,
+          bibNumber: bibNumber,
+          age: age,
+          gender: gender,
         ),
       );
     }
@@ -199,6 +224,11 @@ class ImportService {
         _detectFirstNameColumn(cells) != null ||
         _detectLastNameColumn(cells) != null ||
         _detectBarcodeColumn(cells) != null ||
+        _detectCityColumn(cells) != null ||
+        _detectBibNumberColumn(cells) != null ||
+        _detectAgeColumn(cells) != null ||
+        _detectGenderColumn(cells) != null ||
+        _detectDistanceColumn(cells) != null ||
         _detectPaymentStatusColumn(cells) != null ||
         _detectMembershipStatusColumn(cells) != null;
   }
@@ -251,6 +281,72 @@ class ImportService {
       if (normalized == 'barcode' ||
           normalized == 'barcodevalue' ||
           normalized == 'code') {
+        return index;
+      }
+    }
+    return null;
+  }
+
+  int? _detectCityColumn(List<String> cells) {
+    for (var index = 0; index < cells.length; index += 1) {
+      final normalized = _normalizeHeader(cells[index]);
+      if (normalized == 'city' ||
+          normalized == 'town' ||
+          normalized == 'location' ||
+          normalized == 'hometown') {
+        return index;
+      }
+    }
+    return null;
+  }
+
+  int? _detectBibNumberColumn(List<String> cells) {
+    for (var index = 0; index < cells.length; index += 1) {
+      final normalized = _normalizeHeader(cells[index]);
+      if (normalized == 'bib' ||
+          normalized == 'bibnumber' ||
+          normalized == 'bibno' ||
+          normalized == 'bib#' ||
+          normalized == 'bibnum') {
+        return index;
+      }
+    }
+    return null;
+  }
+
+  int? _detectAgeColumn(List<String> cells) {
+    for (var index = 0; index < cells.length; index += 1) {
+      final normalized = _normalizeHeader(cells[index]);
+      if (normalized == 'age' ||
+          normalized == 'runnerage' ||
+          normalized == 'participantage') {
+        return index;
+      }
+    }
+    return null;
+  }
+
+  int? _detectGenderColumn(List<String> cells) {
+    for (var index = 0; index < cells.length; index += 1) {
+      final normalized = _normalizeHeader(cells[index]);
+      if (normalized == 'gender' ||
+          normalized == 'gend' ||
+          normalized == 'sex' ||
+          normalized == 'runnergender') {
+        return index;
+      }
+    }
+    return null;
+  }
+
+  int? _detectDistanceColumn(List<String> cells) {
+    for (var index = 0; index < cells.length; index += 1) {
+      final normalized = _normalizeHeader(cells[index]);
+      if (normalized == 'distance' ||
+          normalized == 'racedistance' ||
+          normalized == 'distancename' ||
+          normalized == 'distancecategory' ||
+          normalized == 'distancegroup') {
         return index;
       }
     }
@@ -419,6 +515,19 @@ class ImportService {
       return MembershipStatus.expired;
     }
     return MembershipStatus.unknown;
+  }
+
+  int? _parseAge(String rawValue) {
+    final trimmed = rawValue.trim();
+    if (trimmed.isEmpty) {
+      return null;
+    }
+
+    final numericValue = num.tryParse(trimmed);
+    if (numericValue == null) {
+      return null;
+    }
+    return numericValue.round();
   }
 
   DateTime? _parseScheduleDate(String rawValue) {

@@ -14,6 +14,9 @@ class SettingsService {
 
   Future<AppSettings> loadSettings() async {
     return AppSettings(
+      themeMode: AppThemeMode.fromStorage(
+        _preferences.getString(AppConstants.settingsThemeModeKey),
+      ),
       dryRunMode: _preferences.getBool(AppConstants.settingsDryRunKey) ?? false,
       printerHost:
           _preferences.getString(AppConstants.settingsPrinterHostKey) ?? '',
@@ -44,6 +47,10 @@ class SettingsService {
   }
 
   Future<AppSettings> saveSettings(AppSettings settings) async {
+    await _preferences.setString(
+      AppConstants.settingsThemeModeKey,
+      settings.themeMode.storageValue,
+    );
     await _preferences.setBool(
       AppConstants.settingsDryRunKey,
       settings.dryRunMode,

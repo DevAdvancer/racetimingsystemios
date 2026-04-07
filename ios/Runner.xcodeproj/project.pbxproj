@@ -57,8 +57,8 @@
 		76853C4CE6E3DEBC2C26C2FE /* Pods-Runner.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.release.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"; sourceTree = "<group>"; };
 		7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		7AFA3C8E1D35360C0083082E /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Release.xcconfig; path = Flutter/Release.xcconfig; sourceTree = "<group>"; };
-		8A12F6BC3E4A4C2B9C0D1E2F /* Profile.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Profile.xcconfig; path = Flutter/Profile.xcconfig; sourceTree = "<group>"; };
 		86A3FDEBF1708C55A7299968 /* Pods-RunnerTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.release.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.release.xcconfig"; sourceTree = "<group>"; };
+		8A12F6BC3E4A4C2B9C0D1E2F /* Profile.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Profile.xcconfig; path = Flutter/Profile.xcconfig; sourceTree = "<group>"; };
 		9740EEB21CF90195004384FC /* Debug.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Debug.xcconfig; path = Flutter/Debug.xcconfig; sourceTree = "<group>"; };
 		9740EEB31CF90195004384FC /* Generated.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = Generated.xcconfig; path = Flutter/Generated.xcconfig; sourceTree = "<group>"; };
 		97C146EE1CF9000F007C117D /* Runner.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Runner.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -117,7 +117,6 @@
 				86A3FDEBF1708C55A7299968 /* Pods-RunnerTests.release.xcconfig */,
 				073E596DA4AA413EFDF90AD6 /* Pods-RunnerTests.profile.xcconfig */,
 			);
-			name = Pods;
 			path = Pods;
 			sourceTree = "<group>";
 		};
@@ -324,21 +323,6 @@
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-frameworks.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
-		F18E6C8B7D4A43B2A1C90011 /* Fix Native Asset Paths */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-			);
-			name = "Fix Native Asset Paths";
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "MANIFEST=\"${TARGET_BUILD_DIR}/${WRAPPER_NAME}/Frameworks/App.framework/flutter_assets/NativeAssetsManifest.json\"\nAPP_BUNDLE=\"${TARGET_BUILD_DIR}/${WRAPPER_NAME}\"\nif [ ! -f \"$MANIFEST\" ]; then\n  exit 0\nfi\n/usr/bin/python3 - \"$MANIFEST\" \"$APP_BUNDLE\" <<'PY'\nimport json\nimport os\nimport sys\n\nmanifest_path = sys.argv[1]\napp_bundle = sys.argv[2]\n\nwith open(manifest_path, 'r', encoding='utf-8') as fh:\n    data = json.load(fh)\n\nchanged = False\nfor assets in data.get('native-assets', {}).values():\n    for value in assets.values():\n        if not (isinstance(value, list) and len(value) == 2 and value[0] == 'absolute'):\n            continue\n        asset_path = value[1]\n        if asset_path.startswith('Frameworks/'):\n            continue\n        embedded_path = os.path.join(app_bundle, 'Frameworks', asset_path)\n        if os.path.exists(embedded_path):\n            value[1] = f'Frameworks/{asset_path}'\n            changed = True\n\nif changed:\n    with open(manifest_path, 'w', encoding='utf-8') as fh:\n        json.dump(data, fh, separators=(',', ':'))\nPY\n";
-			showEnvVarsInLog = 0;
-		};
 		D76F6CAC759FB7F3E8AC033F /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -381,6 +365,21 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+		F18E6C8B7D4A43B2A1C90011 /* Fix Native Asset Paths */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Fix Native Asset Paths";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "MANIFEST=\"${TARGET_BUILD_DIR}/${WRAPPER_NAME}/Frameworks/App.framework/flutter_assets/NativeAssetsManifest.json\"\nAPP_BUNDLE=\"${TARGET_BUILD_DIR}/${WRAPPER_NAME}\"\nif [ ! -f \"$MANIFEST\" ]; then\n  exit 0\nfi\n/usr/bin/python3 - \"$MANIFEST\" \"$APP_BUNDLE\" <<'PY'\nimport json\nimport os\nimport sys\n\nmanifest_path = sys.argv[1]\napp_bundle = sys.argv[2]\n\nwith open(manifest_path, 'r', encoding='utf-8') as fh:\n    data = json.load(fh)\n\nchanged = False\nfor assets in data.get('native-assets', {}).values():\n    for value in assets.values():\n        if not (isinstance(value, list) and len(value) == 2 and value[0] == 'absolute'):\n            continue\n        asset_path = value[1]\n        if asset_path.startswith('Frameworks/'):\n            continue\n        embedded_path = os.path.join(app_bundle, 'Frameworks', asset_path)\n        if os.path.exists(embedded_path):\n            value[1] = f'Frameworks/{asset_path}'\n            changed = True\n\nif changed:\n    with open(manifest_path, 'w', encoding='utf-8') as fh:\n        json.dump(data, fh, separators=(',', ':'))\nPY\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */
@@ -496,6 +495,7 @@
 				DEVELOPMENT_TEAM = YTCF75HVJU;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = Runner/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -679,6 +679,7 @@
 				DEVELOPMENT_TEAM = YTCF75HVJU;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = Runner/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -702,6 +703,7 @@
 				DEVELOPMENT_TEAM = YTCF75HVJU;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = Runner/Info.plist;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",

@@ -8,7 +8,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 class DatabaseHelper {
   DatabaseHelper._(this._databaseFactory, {this.databasePathOverride});
 
-  static const _databaseVersion = 6;
+  static const _databaseVersion = 10;
 
   final DatabaseFactory _databaseFactory;
   final String? databasePathOverride;
@@ -72,6 +72,18 @@ class DatabaseHelper {
           if (oldVersion < 6) {
             await _migrateToV6(db);
           }
+          if (oldVersion < 7) {
+            await _migrateToV7(db);
+          }
+          if (oldVersion < 8) {
+            await _migrateToV8(db);
+          }
+          if (oldVersion < 9) {
+            await _migrateToV9(db);
+          }
+          if (oldVersion < 10) {
+            await _migrateToV10(db);
+          }
         },
       ),
     );
@@ -90,7 +102,9 @@ class DatabaseHelper {
         paid INTEGER NOT NULL DEFAULT 1,
         payment_status TEXT NOT NULL DEFAULT 'paid',
         membership_status TEXT NOT NULL DEFAULT 'unknown',
-        created_at INTEGER NOT NULL
+        created_at INTEGER NOT NULL,
+        city TEXT,
+        gender TEXT
       );
     ''');
 
@@ -115,13 +129,18 @@ class DatabaseHelper {
         runner_id INTEGER NOT NULL,
         race_id INTEGER NOT NULL,
         barcode_value TEXT NOT NULL,
+        bib_number TEXT,
+        age INTEGER,
+        race_distance_id INTEGER,
         checked_in_at INTEGER,
         start_time INTEGER,
         early_start INTEGER NOT NULL DEFAULT 0,
         finish_time INTEGER,
         elapsed_time_ms INTEGER,
+        pace_override TEXT,
         FOREIGN KEY (runner_id) REFERENCES runners(id) ON DELETE CASCADE,
-        FOREIGN KEY (race_id) REFERENCES races(id) ON DELETE CASCADE
+        FOREIGN KEY (race_id) REFERENCES races(id) ON DELETE CASCADE,
+        FOREIGN KEY (race_distance_id) REFERENCES race_distance_configs(id) ON DELETE SET NULL
       );
     ''');
 
@@ -130,6 +149,18 @@ class DatabaseHelper {
   }
 
   Future<void> _createSupportTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS runner_points (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        runner_id INTEGER NOT NULL,
+        race_id INTEGER NOT NULL,
+        points INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (runner_id) REFERENCES runners(id) ON DELETE CASCADE,
+        FOREIGN KEY (race_id) REFERENCES races(id) ON DELETE CASCADE
+      );
+    ''');
+
     await db.execute('''
       CREATE TABLE IF NOT EXISTS scan_event_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -181,6 +212,19 @@ class DatabaseHelper {
         FOREIGN KEY (race_entry_id) REFERENCES race_entries(id) ON DELETE CASCADE
       );
     ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS race_distance_configs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        race_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        distance_miles REAL NOT NULL,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        is_primary INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (race_id) REFERENCES races(id) ON DELETE CASCADE
+      );
+    ''');
   }
 
   Future<void> _createIndexes(Database db) async {
@@ -203,13 +247,34 @@ class DatabaseHelper {
       'CREATE INDEX IF NOT EXISTS idx_races_status_created ON races(status, created_at DESC);',
     );
     await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_races_created_at ON races(created_at DESC);',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_races_race_date ON races(race_date DESC);',
+    );
+    await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_scan_event_logs_race_created ON scan_event_logs(race_id, created_at DESC);',
     );
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_scan_event_logs_type_created ON scan_event_logs(event_type, created_at DESC);',
     );
     await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_runner_points_runner_created ON runner_points(runner_id, created_at DESC);',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_runner_points_race_runner ON runner_points(race_id, runner_id);',
+    );
+    await db.execute(
       'CREATE UNIQUE INDEX IF NOT EXISTS idx_age_groups_code ON age_groups(code);',
+    );
+    await db.execute(
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_race_distance_configs_order ON race_distance_configs(race_id, sort_order);',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_race_distance_configs_primary ON race_distance_configs(race_id, is_primary DESC, sort_order ASC);',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_race_entries_race_distance_finish ON race_entries(race_id, race_distance_id, finish_time);',
     );
     await db.execute(
       'CREATE UNIQUE INDEX IF NOT EXISTS idx_race_entry_splits_entry_code ON race_entry_splits(race_entry_id, split_code);',
@@ -401,6 +466,60 @@ class DatabaseHelper {
         "ALTER TABLE race_entries ADD COLUMN early_start INTEGER NOT NULL DEFAULT 0;",
       );
     }
+  }
+
+  Future<void> _migrateToV7(Database db) async {
+    await _createSupportTables(db);
+    await _createIndexes(db);
+  }
+
+  Future<void> _migrateToV8(Database db) async {
+    await _createIndexes(db);
+  }
+
+  Future<void> _migrateToV9(Database db) async {
+    if (!await _tableHasColumn(db, 'runners', 'city')) {
+      await db.execute('ALTER TABLE runners ADD COLUMN city TEXT;');
+    }
+    if (!await _tableHasColumn(db, 'runners', 'gender')) {
+      await db.execute('ALTER TABLE runners ADD COLUMN gender TEXT;');
+    }
+    if (!await _tableHasColumn(db, 'race_entries', 'bib_number')) {
+      await db.execute('ALTER TABLE race_entries ADD COLUMN bib_number TEXT;');
+    }
+    if (!await _tableHasColumn(db, 'race_entries', 'age')) {
+      await db.execute('ALTER TABLE race_entries ADD COLUMN age INTEGER;');
+    }
+
+    await _createIndexes(db);
+  }
+
+  Future<void> _migrateToV10(Database db) async {
+    if (!await _tableHasColumn(db, 'race_entries', 'race_distance_id')) {
+      await db.execute(
+        'ALTER TABLE race_entries ADD COLUMN race_distance_id INTEGER;',
+      );
+    }
+    if (!await _tableHasColumn(db, 'race_entries', 'pace_override')) {
+      await db.execute(
+        'ALTER TABLE race_entries ADD COLUMN pace_override TEXT;',
+      );
+    }
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS race_distance_configs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        race_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        distance_miles REAL NOT NULL,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        is_primary INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (race_id) REFERENCES races(id) ON DELETE CASCADE
+      );
+    ''');
+
+    await _createIndexes(db);
   }
 
   Future<bool> _tableHasColumn(
