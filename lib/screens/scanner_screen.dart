@@ -171,15 +171,16 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
       FinishScanStatus.failure => 'Scanner error',
     };
 
+    final earlyStarterPrefix = result.isEarlyStarter ? 'Early starter. ' : '';
     final message = result.isSuccess
         ? result.status == FinishScanStatus.raceStarted
               ? 'Gun time recorded at ${RaceService.formatFinishTime(result.startTime)}. Early starters keep their personal start times.'
               : result.status == FinishScanStatus.earlyStartRecorded
               ? 'Early start recorded at ${RaceService.formatFinishTime(result.startTime)}.'
-              : 'Elapsed ${RaceService.formatElapsed(result.elapsedTimeMs)} at ${RaceService.formatFinishTime(result.finishTime)}'
+              : '${earlyStarterPrefix}Elapsed ${RaceService.formatElapsed(result.elapsedTimeMs)} at ${RaceService.formatFinishTime(result.finishTime)}'
         : result.status == FinishScanStatus.duplicateScan &&
               result.finishTime != null
-        ? '${result.message} First finish kept: ${RaceService.formatElapsed(result.elapsedTimeMs)} at ${RaceService.formatFinishTime(result.finishTime)}.'
+        ? '${result.message} ${result.isEarlyStarter ? 'This runner used an early start. ' : ''}First finish kept: ${RaceService.formatElapsed(result.elapsedTimeMs)} at ${RaceService.formatFinishTime(result.finishTime)}.'
         : result.message;
 
     return StatusBanner(title: title, message: message, tone: tone);
@@ -352,9 +353,9 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
 
     final detail = switch (result.status) {
       FinishScanStatus.success =>
-        'Elapsed ${RaceService.formatElapsed(result.elapsedTimeMs)} at ${RaceService.formatFinishTime(result.finishTime)}',
+        '${result.isEarlyStarter ? 'Early starter • ' : ''}Elapsed ${RaceService.formatElapsed(result.elapsedTimeMs)} at ${RaceService.formatFinishTime(result.finishTime)}',
       FinishScanStatus.duplicateScan =>
-        'First finish kept at ${RaceService.formatFinishTime(result.finishTime)} with ${RaceService.formatElapsed(result.elapsedTimeMs)}',
+        '${result.isEarlyStarter ? 'Early starter • ' : ''}First finish kept at ${RaceService.formatFinishTime(result.finishTime)} with ${RaceService.formatElapsed(result.elapsedTimeMs)}',
       FinishScanStatus.earlyStartRecorded =>
         'Personal start time ${RaceService.formatFinishTime(result.startTime)}',
       FinishScanStatus.raceStarted =>

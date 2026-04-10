@@ -980,6 +980,7 @@ class _BarcodePreviewPanel extends StatelessWidget {
             const SizedBox(height: 12),
             RunnerBarcodePreview(
               data: previewMatch!.entry.barcodeValue,
+              runnerName: previewMatch!.runner.name,
               height: 78,
               padding: const EdgeInsets.all(16),
               borderRadius: 22,

@@ -4,6 +4,7 @@ class FinishScanResult {
     required this.message,
     this.runnerName,
     this.barcodeValue,
+    this.isEarlyStarter = false,
     this.startTime,
     this.finishTime,
     this.elapsedTimeMs,
@@ -13,6 +14,7 @@ class FinishScanResult {
   final String message;
   final String? runnerName;
   final String? barcodeValue;
+  final bool isEarlyStarter;
   final DateTime? startTime;
   final DateTime? finishTime;
   final int? elapsedTimeMs;
@@ -32,6 +34,7 @@ class FinishScanResult {
   factory FinishScanResult.success({
     required String runnerName,
     required String barcodeValue,
+    bool isEarlyStarter = false,
     required DateTime finishTime,
     required int elapsedTimeMs,
   }) {
@@ -40,6 +43,7 @@ class FinishScanResult {
       message: 'Finisher recorded successfully.',
       runnerName: runnerName,
       barcodeValue: barcodeValue,
+      isEarlyStarter: isEarlyStarter,
       finishTime: finishTime,
       elapsedTimeMs: elapsedTimeMs,
     );
@@ -100,6 +104,7 @@ class FinishScanResult {
   factory FinishScanResult.duplicateScan({
     required String runnerName,
     required String barcodeValue,
+    bool isEarlyStarter = false,
     DateTime? finishTime,
     int? elapsedTimeMs,
   }) {
@@ -109,6 +114,7 @@ class FinishScanResult {
           '$runnerName was already recorded. The first finish time was kept.',
       runnerName: runnerName,
       barcodeValue: barcodeValue,
+      isEarlyStarter: isEarlyStarter,
       finishTime: finishTime,
       elapsedTimeMs: elapsedTimeMs,
     );

@@ -5,6 +5,7 @@ class RunnerBarcodePreview extends StatelessWidget {
   const RunnerBarcodePreview({
     super.key,
     required this.data,
+    this.runnerName,
     this.height = 88,
     this.padding = const EdgeInsets.all(20),
     this.borderRadius = 24,
@@ -12,6 +13,7 @@ class RunnerBarcodePreview extends StatelessWidget {
   });
 
   final String data;
+  final String? runnerName;
   final double height;
   final EdgeInsetsGeometry padding;
   final double borderRadius;
@@ -19,6 +21,11 @@ class RunnerBarcodePreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final trimmedRunnerName = runnerName?.trim();
+    final visibleLabel = trimmedRunnerName != null && trimmedRunnerName.isNotEmpty
+        ? trimmedRunnerName
+        : data;
+
     return Container(
       padding: padding,
       decoration: BoxDecoration(
@@ -54,13 +61,16 @@ class RunnerBarcodePreview extends StatelessWidget {
               if (showValue) ...[
                 const SizedBox(height: 10),
                 Text(
-                  data,
-                  maxLines: 1,
+                  visibleLabel,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.center,
                   style: Theme.of(
                     context,
-                  ).textTheme.titleMedium?.copyWith(color: Colors.black87),
+                  ).textTheme.titleMedium?.copyWith(
+                    color: Colors.black87,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ],
             ],

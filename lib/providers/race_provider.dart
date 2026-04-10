@@ -59,6 +59,7 @@ final currentRaceProvider = AsyncNotifierProvider<CurrentRaceController, Race?>(
 class CurrentRaceController extends AsyncNotifier<Race?> {
   RaceService get _raceService => ref.read(raceServiceProvider);
   SettingsService get _settingsService => ref.read(settingsServiceProvider);
+  int? _manualRaceId;
 
   @override
   FutureOr<Race?> build() async {
@@ -74,15 +75,15 @@ class CurrentRaceController extends AsyncNotifier<Race?> {
       return todayRace;
     }
 
-    final settings = await _settingsService.loadSettings();
-    final selectedRaceId = settings.selectedRaceId;
-    if (selectedRaceId != null) {
-      final selectedRace = await _raceService.getRace(selectedRaceId);
+    if (_manualRaceId != null) {
+      final selectedRace = await _raceService.getRace(_manualRaceId!);
       if (selectedRace != null) {
         return selectedRace;
       }
+      _manualRaceId = null;
     }
-    return _raceService.getCurrentRace();
+
+    return null;
   }
 
   Future<Race?> refresh() async {
@@ -108,6 +109,7 @@ class CurrentRaceController extends AsyncNotifier<Race?> {
   }
 
   Future<void> selectRace(int raceId) async {
+    _manualRaceId = raceId;
     final settings = await _settingsService.loadSettings();
     await _settingsService.saveSettings(
       settings.copyWith(selectedRaceId: raceId),
@@ -116,6 +118,7 @@ class CurrentRaceController extends AsyncNotifier<Race?> {
   }
 
   Future<void> clearSelectedRace() async {
+    _manualRaceId = null;
     final settings = await _settingsService.loadSettings();
     await _settingsService.saveSettings(
       settings.copyWith(clearSelectedRaceId: true),

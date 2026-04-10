@@ -144,12 +144,13 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Tap your name from the list'), findsOneWidget);
-      expect(find.text('Jordan Lee'), findsOneWidget);
+      expect(find.text('Jordan Lee'), findsAtLeastNWidgets(1));
 
-      await tester.tap(find.text('Jordan Lee'));
+      await tester.tap(find.text('Jordan Lee').first);
       await tester.pumpAndSettle();
 
       expect(find.text('Barcode preview for Jordan Lee'), findsOneWidget);
+      expect(find.text('Jordan Lee'), findsAtLeastNWidgets(2));
       expect(find.text('RT-000321'), findsAtLeastNWidgets(1));
     },
   );

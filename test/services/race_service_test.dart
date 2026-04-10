@@ -711,6 +711,7 @@ void main() {
 
       expect(earlyStart.status, FinishScanStatus.earlyStartRecorded);
       expect(finish.status, FinishScanStatus.success);
+      expect(finish.isEarlyStarter, isTrue);
       expect(results.single.earlyStart, isTrue);
       expect(
         results.single.startTime?.millisecondsSinceEpoch,
@@ -793,6 +794,8 @@ void main() {
     expect(earlyStart.status, FinishScanStatus.earlyStartRecorded);
     expect(earlyFinish.status, FinishScanStatus.success);
     expect(regularFinish.status, FinishScanStatus.success);
+    expect(earlyFinish.isEarlyStarter, isTrue);
+    expect(regularFinish.isEarlyStarter, isFalse);
     expect(earlyRow.earlyStart, isTrue);
     expect(
       earlyRow.startTime?.millisecondsSinceEpoch,

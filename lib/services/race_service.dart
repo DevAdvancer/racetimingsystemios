@@ -1018,6 +1018,7 @@ class RaceService {
           return FinishScanResult.duplicateScan(
             runnerName: runner.name,
             barcodeValue: barcode,
+            isEarlyStarter: entry.earlyStart,
             finishTime: entry.finishTime,
             elapsedTimeMs: entry.elapsedTimeMs,
           );
@@ -1039,6 +1040,7 @@ class RaceService {
         return FinishScanResult.success(
           runnerName: runner.name,
           barcodeValue: barcode,
+          isEarlyStarter: entry.earlyStart,
           finishTime: finishTime,
           elapsedTimeMs: elapsedTimeMs < 0 ? 0 : elapsedTimeMs,
         );
