@@ -233,7 +233,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                   title: 'Step 3: Printer Setup',
                   children: [
                     Text(
-                      'Set up the Brother QL-820NWB connection for this iPad.',
+                      'Set up the Brother QL-820NWB connection for this iPad. Bluetooth uses a saved manual printer target, and Wi-Fi can report when the printer is reachable on the current network.',
                       style: Theme.of(context).textTheme.bodyLarge,
                     ),
                     const SizedBox(height: 16),
@@ -263,6 +263,10 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                       decoration: InputDecoration(
                         labelText: _printerConnectionType.targetFieldLabel,
                         helperText: _printerConnectionType.targetHelpText,
+                        hintText: _printerConnectionType ==
+                                PrinterConnectionType.bluetooth
+                            ? 'Example: QL-820NWB or 00:80:92:12:34:56'
+                            : 'Example: 192.168.1.45 or brother-printer.local',
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -321,7 +325,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                                   context,
                                   title: 'Settings saved',
                                   message:
-                                      'Device settings were saved for this iPad.',
+                                      'Device printer settings were saved for this iPad.',
                                   tone: UserDialogTone.success,
                                 );
                               }

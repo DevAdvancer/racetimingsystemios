@@ -37,9 +37,9 @@ enum PrinterConnectionType {
 
   String get targetHelpText => switch (this) {
     PrinterConnectionType.bluetooth =>
-      'Use the paired Brother QL-820NWB Bluetooth name or MAC address.',
+      'Enter the Brother QL-820NWB Bluetooth name or MAC address manually. This saves the target for this iPad.',
     PrinterConnectionType.network =>
-      'Use the Brother printer IP address or hostname.',
+      'Use the Brother printer IP address or hostname. The app can check whether the printer is reachable on the current Wi-Fi network.',
   };
 
   static PrinterConnectionType fromStorage(String? value) {

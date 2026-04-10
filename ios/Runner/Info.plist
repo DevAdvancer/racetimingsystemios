@@ -24,10 +24,26 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>RoxburyRaces uses Bluetooth to discover and connect to the Brother label printer.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>RoxburyRaces uses Bluetooth to discover and connect to the Brother label printer.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_pdl-datastream._tcp</string>
+		<string>_printer._tcp</string>
+		<string>_ipp._tcp</string>
+	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>RoxburyRaces uses your local network to talk to the Brother label printer.</string>
+	<key>UISupportedExternalAccessoryProtocols</key>
+	<array>
+		<string>com.brother.ptcbp</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
