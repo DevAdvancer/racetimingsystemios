@@ -312,32 +312,56 @@ class RaceService {
   }
 
   Future<Race> endRace(int raceId) async {
-    final race = await _databaseService.getRace(raceId);
-    if (race == null) {
-      throw StateError('Race not found.');
-    }
-    if (race.isFinished) {
-      return race;
-    }
-    if (!race.isRunning) {
-      throw StateError('Only a running race can be ended.');
-    }
-    final endedAt = DateTime.now().toUtc();
-    final finalizedEndTime =
-        race.gunTime != null && endedAt.isBefore(race.gunTime!)
-        ? race.gunTime!
-        : endedAt;
+    return _databaseService.transaction((db) async {
+      final race = await _databaseService.getRace(raceId, executor: db);
+      if (race == null) {
+        throw StateError('Race not found.');
+      }
+      if (race.isFinished) {
+        return race;
+      }
+      if (!race.isRunning) {
+        throw StateError('Only a running race can be ended.');
+      }
+      final endedAt = DateTime.now().toUtc();
+      final finalizedEndTime =
+          race.gunTime != null && endedAt.isBefore(race.gunTime!)
+          ? race.gunTime!
+          : endedAt;
 
-    return _databaseService.updateRace(
-      race.copyWith(status: RaceStatus.finished, endTime: finalizedEndTime),
-    );
+      final finishedRace = await _databaseService.updateRace(
+        race.copyWith(status: RaceStatus.finished, endTime: finalizedEndTime),
+        executor: db,
+      );
+
+      final unfinishedEntries = await _databaseService.listUnfinishedEntries(
+        race.id,
+        executor: db,
+      );
+      for (final entry in unfinishedEntries) {
+        final startTime = entry.earlyStart && entry.startTime != null
+            ? entry.startTime!
+            : finishedRace.gunTime!;
+        final elapsedTimeMs = finalizedEndTime
+            .difference(startTime)
+            .inMilliseconds;
+        await _databaseService.finishRaceEntry(
+          entryId: entry.id,
+          finishTime: finalizedEndTime,
+          elapsedTimeMs: elapsedTimeMs < 0 ? 0 : elapsedTimeMs,
+          executor: db,
+        );
+      }
+
+      return finishedRace;
+    });
   }
 
   Future<FinishScanResult> startCurrentRaceFromScanner() async {
     final race = await resolveSelectedRace();
     if (race == null) {
       return FinishScanResult.validationError(
-        'Select or create today\'s race before starting the clock.',
+        'Select or create a race before starting the clock.',
       );
     }
 
@@ -457,11 +481,6 @@ class RaceService {
       return runningRace;
     }
 
-    final todayRace = await getRaceScheduledForDate(DateTime.now());
-    if (todayRace != null) {
-      return todayRace;
-    }
-
     final settings = await _settingsService.loadSettings();
     final selectedRaceId = settings.selectedRaceId;
     if (selectedRaceId != null) {
@@ -469,6 +488,11 @@ class RaceService {
       if (selectedRace != null) {
         return selectedRace;
       }
+    }
+
+    final todayRace = await getRaceScheduledForDate(DateTime.now());
+    if (todayRace != null) {
+      return todayRace;
     }
     return _databaseService.getCurrentRace();
   }
@@ -661,8 +685,7 @@ class RaceService {
     final race = await resolveSelectedRace();
     if (race == null) {
       return PrinterStatus.error(
-        message:
-            'Create or select today\'s race before printing the start barcode.',
+        message: 'Create or select a race before printing the start barcode.',
       );
     }
 
@@ -681,7 +704,7 @@ class RaceService {
     if (race == null) {
       return PrinterStatus.error(
         message:
-            'Create or select today\'s race before printing the early start barcode.',
+            'Create or select a race before printing the early-start barcode.',
       );
     }
 
@@ -693,6 +716,44 @@ class RaceService {
         raceName: race.name,
       ),
     );
+  }
+
+  Future<FinishScanResult> prepareEarlyStartRunnerScan() async {
+    final race = await resolveSelectedRace();
+    if (race == null) {
+      final result = FinishScanResult.validationError(
+        'Create or select a race before recording a personal start.',
+      );
+      await _logScanOutcome(
+        barcodeValue: BarcodeService.earlyStartCommand,
+        result: result,
+      );
+      return result;
+    }
+    if (race.isFinished) {
+      final result = FinishScanResult.failure(
+        'This race is already finished. Early starts can no longer be recorded.',
+      );
+      await _logScanOutcome(
+        raceId: race.id,
+        barcodeValue: BarcodeService.earlyStartCommand,
+        result: result,
+      );
+      return result;
+    }
+    if (race.isRunning && race.gunTime != null) {
+      final result = FinishScanResult.validationError(
+        'The official race has already started. Early starts must be recorded before gun time.',
+      );
+      await _logScanOutcome(
+        raceId: race.id,
+        barcodeValue: BarcodeService.earlyStartCommand,
+        result: result,
+      );
+      return result;
+    }
+
+    return FinishScanResult.awaitingEarlyStartRunner();
   }
 
   Future<CheckInResult> printCheckInMatches(List<CheckInMatch> matches) async {
@@ -743,10 +804,14 @@ class RaceService {
       return result;
     }
 
+    if (_barcodeService.isStartRaceCommand(barcode)) {
+      return startCurrentRaceFromScanner();
+    }
+
     final race = await resolveSelectedRace();
     if (race == null) {
       final result = FinishScanResult.validationError(
-        'Create or select today\'s race before scanning runners.',
+        'Create or select a race before scanning runners.',
       );
       await _logScanOutcome(barcodeValue: barcode, result: result);
       return result;
@@ -980,7 +1045,7 @@ class RaceService {
     }
 
     final race = await resolveSelectedRace();
-    if (race == null || !race.isRunning || race.gunTime == null) {
+    if (race == null || race.gunTime == null) {
       final result = FinishScanResult.raceNotStarted();
       await _logScanOutcome(
         raceId: race?.id,
@@ -992,6 +1057,69 @@ class RaceService {
 
     int? runnerId;
     int? entryId;
+
+    if (race.isFinished) {
+      final entry = await _databaseService.getEntryByBarcodeForRace(
+        raceId: race.id,
+        barcodeValue: barcode,
+      );
+      entryId = entry?.id;
+      if (entry != null) {
+        final runner = await _databaseService.getRunner(entry.runnerId);
+        runnerId = runner?.id;
+        if (runner == null) {
+          final result = FinishScanResult.failure(
+            'Runner record could not be found.',
+          );
+          await _logScanOutcome(
+            raceId: race.id,
+            entryId: entryId,
+            barcodeValue: barcode,
+            result: result,
+          );
+          return result;
+        }
+        if (entry.isFinished) {
+          final result = FinishScanResult.duplicateScan(
+            runnerName: runner.name,
+            barcodeValue: barcode,
+            isEarlyStarter: entry.earlyStart,
+            finishTime: entry.finishTime,
+            elapsedTimeMs: entry.elapsedTimeMs,
+          );
+          await _logScanOutcome(
+            raceId: race.id,
+            runnerId: runnerId,
+            entryId: entryId,
+            barcodeValue: barcode,
+            result: result,
+          );
+          return result;
+        }
+      }
+
+      final result = FinishScanResult.failure(
+        'This race is already finished. Runner scans can no longer be recorded.',
+      );
+      await _logScanOutcome(
+        raceId: race.id,
+        runnerId: runnerId,
+        entryId: entryId,
+        barcodeValue: barcode,
+        result: result,
+      );
+      return result;
+    }
+
+    if (!race.isRunning) {
+      final result = FinishScanResult.raceNotStarted();
+      await _logScanOutcome(
+        raceId: race.id,
+        barcodeValue: barcode,
+        result: result,
+      );
+      return result;
+    }
 
     try {
       final result = await _databaseService.transaction((db) async {
@@ -1037,12 +1165,30 @@ class RaceService {
           executor: db,
         );
 
+        final remainingUnfinishedCount = await _databaseService
+            .countRunnersWithoutFinishTime(race.id, executor: db);
+        final raceAutoClosed = remainingUnfinishedCount == 0;
+        final raceEndTime = raceAutoClosed
+            ? finishTime.isBefore(race.gunTime!)
+                  ? race.gunTime!
+                  : finishTime
+            : null;
+
+        if (raceAutoClosed && raceEndTime != null) {
+          await _databaseService.updateRace(
+            race.copyWith(status: RaceStatus.finished, endTime: raceEndTime),
+            executor: db,
+          );
+        }
+
         return FinishScanResult.success(
           runnerName: runner.name,
           barcodeValue: barcode,
           isEarlyStarter: entry.earlyStart,
+          raceAutoClosed: raceAutoClosed,
           finishTime: finishTime,
           elapsedTimeMs: elapsedTimeMs < 0 ? 0 : elapsedTimeMs,
+          raceEndTime: raceEndTime,
         );
       });
       await _logScanOutcome(
@@ -1085,7 +1231,7 @@ class RaceService {
     final race = await resolveSelectedRace();
     if (race == null) {
       final result = FinishScanResult.validationError(
-        'Create or select today\'s race before recording an early start.',
+        'Create or select a race before recording a personal start.',
       );
       await _logScanOutcome(barcodeValue: barcode, result: result);
       return result;
@@ -1201,6 +1347,10 @@ class RaceService {
     }
 
     return recordFinish(unfinished.first.barcodeValue);
+  }
+
+  Future<int> countUnfinishedEntries(int raceId) {
+    return _databaseService.countUnfinishedEntries(raceId);
   }
 
   static String formatElapsed(int? elapsedTimeMs) {

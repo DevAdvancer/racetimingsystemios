@@ -15,6 +15,7 @@ import 'package:race_timer/widgets/branding.dart';
 import 'package:race_timer/widgets/results_table.dart';
 import 'package:race_timer/widgets/runner_card.dart';
 import 'package:race_timer/widgets/status_banner.dart';
+import 'package:race_timer/widgets/user_dialogs.dart';
 
 class ScannerScreen extends ConsumerStatefulWidget {
   const ScannerScreen({super.key});
@@ -60,7 +61,7 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
   }
 
   Future<void> _submitScan() async {
-    await ref
+    final result = await ref
         .read(finishScannerProvider.notifier)
         .submitBuffer(_scannerController.text);
     if (!mounted) {
@@ -68,6 +69,11 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
     }
     _scannerController.clear();
     _bufferNotifier.value = '';
+    _requestScannerFocus();
+    await _showRecordedScanDialog(result);
+    if (!mounted) {
+      return;
+    }
     _requestScannerFocus();
   }
 
@@ -159,28 +165,38 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
 
     final title = switch (result.status) {
       FinishScanStatus.idle => 'Ready',
-      FinishScanStatus.success => result.runnerName ?? 'Finisher recorded',
-      FinishScanStatus.raceStarted => 'Race started',
-      FinishScanStatus.awaitingEarlyStartRunner => 'Early start mode',
+      FinishScanStatus.success =>
+        result.runnerName == null ? 'Ended' : 'Ended: ${result.runnerName}',
+      FinishScanStatus.raceStarted => 'Global start recorded',
+      FinishScanStatus.awaitingEarlyStartRunner => 'Runner start mode',
       FinishScanStatus.earlyStartRecorded =>
-        result.runnerName ?? 'Early start recorded',
+        result.runnerName == null ? 'Started' : 'Started: ${result.runnerName}',
       FinishScanStatus.unknownBarcode => 'Unknown barcode',
-      FinishScanStatus.duplicateScan => 'Duplicate scan',
+      FinishScanStatus.duplicateScan =>
+        result.runnerName == null
+            ? 'Already ended'
+            : 'Already ended: ${result.runnerName}',
       FinishScanStatus.raceNotStarted => 'Race not started',
       FinishScanStatus.validationError => 'Scan issue',
       FinishScanStatus.failure => 'Scanner error',
     };
 
     final earlyStarterPrefix = result.isEarlyStarter ? 'Early starter. ' : '';
+    final assignmentMessage =
+        result.barcodeValue != null &&
+            result.runnerName != null &&
+            result.barcodeValue!.isNotEmpty
+        ? 'Barcode ${result.barcodeValue} is assigned to ${result.runnerName}. '
+        : '';
     final message = result.isSuccess
         ? result.status == FinishScanStatus.raceStarted
-              ? 'Gun time recorded at ${RaceService.formatFinishTime(result.startTime)}. Early starters keep their personal start times.'
+              ? 'Gun time recorded at ${RaceService.formatFinishTime(result.startTime)}. All runner scans now record finishes, while early starters keep their personal start times.'
               : result.status == FinishScanStatus.earlyStartRecorded
-              ? 'Early start recorded at ${RaceService.formatFinishTime(result.startTime)}.'
-              : '${earlyStarterPrefix}Elapsed ${RaceService.formatElapsed(result.elapsedTimeMs)} at ${RaceService.formatFinishTime(result.finishTime)}'
+              ? '${assignmentMessage}Started at ${RaceService.formatFinishTime(result.startTime)}.'
+              : '$assignmentMessage${earlyStarterPrefix}Ended at ${RaceService.formatFinishTime(result.finishTime)}. Time ${RaceService.formatElapsed(result.elapsedTimeMs)}.${result.raceAutoClosed ? ' This was the last unfinished runner in this race, so the race closed automatically.' : ''}'
         : result.status == FinishScanStatus.duplicateScan &&
               result.finishTime != null
-        ? '${result.message} ${result.isEarlyStarter ? 'This runner used an early start. ' : ''}First finish kept: ${RaceService.formatElapsed(result.elapsedTimeMs)} at ${RaceService.formatFinishTime(result.finishTime)}.'
+        ? '$assignmentMessage${result.message} ${result.isEarlyStarter ? 'This runner used an early start. ' : ''}First finish kept: ${RaceService.formatElapsed(result.elapsedTimeMs)} at ${RaceService.formatFinishTime(result.finishTime)}.'
         : result.message;
 
     return StatusBanner(title: title, message: message, tone: tone);
@@ -194,8 +210,12 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
     final race = raceAsync.asData?.value;
     final waitingMessage = race == null
         ? 'Create or select a race before scanning.'
+        : race.isFinished
+        ? 'Global stop has already been recorded. Finish scans are closed for this race.'
+        : scannerState.awaitingEarlyStartRunner
+        ? 'Scan the runner barcode now to store that racer\'s personal start time.'
         : race.isRunning
-        ? 'Waiting for runner barcode to record a finish.'
+        ? 'Waiting for runner barcode to record a finish. If this is the last unfinished runner in this race, the race will close automatically.'
         : 'Waiting for runner barcode. Any scan before Global Start becomes that runner\'s early start.';
 
     return Column(
@@ -207,8 +227,12 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
             message: race == null
                 ? 'Create a race in Setup before scanning.'
                 : 'Status: ${race.statusLabel}',
-            tone: race?.isRunning == true
+            tone: race == null
+                ? StatusBannerTone.warning
+                : race.isRunning
                 ? StatusBannerTone.success
+                : race.isFinished
+                ? StatusBannerTone.info
                 : StatusBannerTone.warning,
           ),
           loading: () => const LinearProgressIndicator(),
@@ -253,7 +277,9 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
           valueListenable: _bufferNotifier,
           builder: (context, buffer, child) {
             return RunnerCard(
-              title: race?.isRunning == true
+              title: race?.isFinished == true
+                  ? 'Race finished'
+                  : race?.isRunning == true
                   ? 'Finish scanner ready'
                   : 'Early-start scanner ready',
               subtitle: scannerState.isSubmitting
@@ -326,6 +352,7 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
     return result.status == FinishScanStatus.success ||
         result.status == FinishScanStatus.duplicateScan ||
         result.status == FinishScanStatus.earlyStartRecorded ||
+        result.status == FinishScanStatus.awaitingEarlyStartRunner ||
         result.status == FinishScanStatus.raceStarted;
   }
 
@@ -337,10 +364,11 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
     final colorScheme = theme.colorScheme;
 
     final title = switch (result.status) {
-      FinishScanStatus.success => 'Last finisher',
-      FinishScanStatus.duplicateScan => 'Already recorded',
-      FinishScanStatus.earlyStartRecorded => 'Early start saved',
-      FinishScanStatus.raceStarted => 'Gun time recorded',
+      FinishScanStatus.success => 'Ended',
+      FinishScanStatus.duplicateScan => 'Already ended',
+      FinishScanStatus.awaitingEarlyStartRunner => 'Scan runner barcode',
+      FinishScanStatus.earlyStartRecorded => 'Started',
+      FinishScanStatus.raceStarted => 'Global start recorded',
       _ => 'Scanner update',
     };
 
@@ -348,16 +376,19 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
       FinishScanStatus.raceStarted => RaceService.formatFinishTime(
         result.startTime,
       ),
+      FinishScanStatus.awaitingEarlyStartRunner => 'Runner start',
       _ => result.runnerName ?? 'Ready',
     };
 
     final detail = switch (result.status) {
       FinishScanStatus.success =>
-        '${result.isEarlyStarter ? 'Early starter • ' : ''}Elapsed ${RaceService.formatElapsed(result.elapsedTimeMs)} at ${RaceService.formatFinishTime(result.finishTime)}',
+        'Barcode ${result.barcodeValue ?? '--'} assigned to ${result.runnerName ?? 'this runner'}. ${result.isEarlyStarter ? 'Early starter • ' : ''}Ended at ${RaceService.formatFinishTime(result.finishTime)} with time ${RaceService.formatElapsed(result.elapsedTimeMs)}${result.raceAutoClosed ? '. This was the last unfinished runner in this race, so Global Stop was recorded automatically.' : ''}',
       FinishScanStatus.duplicateScan =>
-        '${result.isEarlyStarter ? 'Early starter • ' : ''}First finish kept at ${RaceService.formatFinishTime(result.finishTime)} with ${RaceService.formatElapsed(result.elapsedTimeMs)}',
+        'Barcode ${result.barcodeValue ?? '--'} assigned to ${result.runnerName ?? 'this runner'}. ${result.isEarlyStarter ? 'Early starter • ' : ''}First finish kept at ${RaceService.formatFinishTime(result.finishTime)} with ${RaceService.formatElapsed(result.elapsedTimeMs)}',
+      FinishScanStatus.awaitingEarlyStartRunner =>
+        'The next runner barcode will store that runner\'s personal start time for this race.',
       FinishScanStatus.earlyStartRecorded =>
-        'Personal start time ${RaceService.formatFinishTime(result.startTime)}',
+        'Barcode ${result.barcodeValue ?? '--'} assigned to ${result.runnerName ?? 'this runner'}. Started at ${RaceService.formatFinishTime(result.startTime)}',
       FinishScanStatus.raceStarted =>
         'Finish-line scans now use this gun time for everyone without an early start.',
       _ => result.message,
@@ -366,6 +397,7 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
     final icon = switch (result.status) {
       FinishScanStatus.success => Icons.emoji_events,
       FinishScanStatus.duplicateScan => Icons.history,
+      FinishScanStatus.awaitingEarlyStartRunner => Icons.qr_code_scanner,
       FinishScanStatus.earlyStartRecorded => Icons.alarm_on,
       FinishScanStatus.raceStarted => Icons.flag,
       _ => Icons.info_outline,
@@ -412,5 +444,50 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
         ),
       ),
     );
+  }
+
+  Future<void> _showRecordedScanDialog(FinishScanResult result) async {
+    switch (result.status) {
+      case FinishScanStatus.awaitingEarlyStartRunner:
+        await showUserMessageDialog(
+          context,
+          title: 'Runner Start Ready',
+          message:
+              'Scan the runner barcode now and the personal start time will be stored for this race.',
+          tone: UserDialogTone.info,
+          buttonText: 'Continue Scanning',
+        );
+        return;
+      case FinishScanStatus.earlyStartRecorded:
+        await showUserMessageDialog(
+          context,
+          title: 'Personal Start Saved',
+          message:
+              '${result.runnerName ?? 'Runner'} started at ${RaceService.formatFinishTime(result.startTime)}. This personal start time is now stored for this race.',
+          tone: UserDialogTone.success,
+          buttonText: 'Continue Scanning',
+        );
+        return;
+      case FinishScanStatus.success:
+        final timingSource = result.isEarlyStarter
+            ? 'This racer used a personal early-start time.'
+            : 'This racer used the global start time.';
+        final autoCloseMessage = result.raceAutoClosed
+            ? ' This was the last unfinished runner in this race, so the race closed automatically at ${RaceService.formatFinishTime(result.raceEndTime ?? result.finishTime)}.'
+            : '';
+        await showUserMessageDialog(
+          context,
+          title: result.raceAutoClosed
+              ? 'Finish Saved and Race Closed'
+              : 'Finish Saved',
+          message:
+              '${result.runnerName ?? 'Runner'} ended at ${RaceService.formatFinishTime(result.finishTime)} with a stored time of ${RaceService.formatElapsed(result.elapsedTimeMs)}. $timingSource$autoCloseMessage',
+          tone: UserDialogTone.success,
+          buttonText: 'Continue Scanning',
+        );
+        return;
+      default:
+        return;
+    }
   }
 }

@@ -81,7 +81,7 @@ class StartScreen extends ConsumerWidget {
                               ),
                               const SizedBox(height: 12),
                               Text(
-                                'Choose the large runner button for barcode printing, or open the organizer dashboard for setup and race control.',
+                                'The locked screen stays focused on runner check-in. Organizers use Choose Race to unlock setup and pick today\'s event.',
                                 textAlign: TextAlign.center,
                                 style: theme.textTheme.titleMedium?.copyWith(
                                   color: colorScheme.onSurfaceVariant,
@@ -110,30 +110,7 @@ class StartScreen extends ConsumerWidget {
                                 ),
                               ),
                               const SizedBox(height: 28),
-                              Wrap(
-                                spacing: 14,
-                                runSpacing: 14,
-                                children: const [
-                                  _StartGuideCard(
-                                    step: '1',
-                                    title: 'Print barcode',
-                                    message:
-                                        'Use this when a racer needs a label.',
-                                  ),
-                                  _StartGuideCard(
-                                    step: '2',
-                                    title: 'Start race',
-                                    message:
-                                        'Organizers open the dashboard to manage the clock.',
-                                  ),
-                                  _StartGuideCard(
-                                    step: '3',
-                                    title: 'Scan finishers',
-                                    message:
-                                        'Volunteers record starts and finishes there too.',
-                                  ),
-                                ],
-                              ),
+                              const _StartInstructionList(),
                               const SizedBox(height: 28),
                               SizedBox(
                                 height: 104,
@@ -157,10 +134,8 @@ class StartScreen extends ConsumerWidget {
                                 child: OutlinedButton.icon(
                                   onPressed: () =>
                                       _openAdminDashboard(context, ref),
-                                  icon: const Icon(
-                                    Icons.admin_panel_settings_outlined,
-                                  ),
-                                  label: const Text('Organizer Dashboard'),
+                                  icon: const Icon(Icons.list_alt_outlined),
+                                  label: const Text('Choose Race'),
                                 ),
                               ),
                             ],
@@ -181,7 +156,7 @@ class StartScreen extends ConsumerWidget {
   Future<void> _openAdminDashboard(BuildContext context, WidgetRef ref) async {
     if (ref.read(adminAccessProvider)) {
       if (context.mounted) {
-        context.go(AppRoutes.raceDashboard);
+        context.go(AppRoutes.adminHome);
       }
       return;
     }
@@ -200,7 +175,7 @@ class StartScreen extends ConsumerWidget {
     }
 
     ref.read(adminAccessProvider.notifier).unlock();
-    context.go(AppRoutes.raceDashboard);
+    context.go(AppRoutes.adminHome);
   }
 }
 
@@ -237,61 +212,78 @@ class _StartBadge extends StatelessWidget {
   }
 }
 
-class _StartGuideCard extends StatelessWidget {
-  const _StartGuideCard({
-    required this.step,
-    required this.title,
-    required this.message,
-  });
+class _StartInstructionList extends StatelessWidget {
+  const _StartInstructionList();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface.withValues(alpha: 0.82),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: const [
+          _StartInstructionRow(
+            step: '1',
+            message: 'Tap Print Barcode when a racer needs a label.',
+          ),
+          SizedBox(height: 14),
+          _StartInstructionRow(
+            step: '2',
+            message:
+                'Tap Choose Race to unlock organizer tools and select today\'s race.',
+          ),
+          SizedBox(height: 14),
+          _StartInstructionRow(
+            step: '3',
+            message:
+                'Before Global Start, scan the runner barcode to store that racer\'s personal start. After Global Start, scan the same runner barcode again to store the finish.',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StartInstructionRow extends StatelessWidget {
+  const _StartInstructionRow({required this.step, required this.message});
 
   final String step;
-  final String title;
   final String message;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return SizedBox(
-      width: 260,
-      child: Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surface.withValues(alpha: 0.82),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: theme.colorScheme.outlineVariant),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        CircleAvatar(
+          radius: 18,
+          backgroundColor: theme.colorScheme.primary,
+          foregroundColor: theme.colorScheme.onPrimary,
+          child: Text(
+            step,
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: theme.colorScheme.onPrimary,
+            ),
+          ),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            CircleAvatar(
-              radius: 20,
-              backgroundColor: theme.colorScheme.primary,
-              foregroundColor: theme.colorScheme.onPrimary,
-              child: Text(
-                step,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  color: theme.colorScheme.onPrimary,
-                ),
-              ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Text(
+            message,
+            style: theme.textTheme.bodyLarge?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
             ),
-            const SizedBox(height: 14),
-            Text(
-              title,
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              message,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
 }

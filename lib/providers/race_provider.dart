@@ -68,19 +68,28 @@ class CurrentRaceController extends AsyncNotifier<Race?> {
       return runningRace;
     }
 
-    final todayRace = await _raceService.getRaceScheduledForDate(
-      DateTime.now(),
-    );
-    if (todayRace != null) {
-      return todayRace;
-    }
-
     if (_manualRaceId != null) {
       final selectedRace = await _raceService.getRace(_manualRaceId!);
       if (selectedRace != null) {
         return selectedRace;
       }
       _manualRaceId = null;
+    }
+
+    final settings = await _settingsService.loadSettings();
+    final selectedRaceId = settings.selectedRaceId;
+    if (selectedRaceId != null) {
+      final selectedRace = await _raceService.getRace(selectedRaceId);
+      if (selectedRace != null) {
+        return selectedRace;
+      }
+    }
+
+    final todayRace = await _raceService.getRaceScheduledForDate(
+      DateTime.now(),
+    );
+    if (todayRace != null) {
+      return todayRace;
     }
 
     return null;

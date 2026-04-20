@@ -5,9 +5,11 @@ class FinishScanResult {
     this.runnerName,
     this.barcodeValue,
     this.isEarlyStarter = false,
+    this.raceAutoClosed = false,
     this.startTime,
     this.finishTime,
     this.elapsedTimeMs,
+    this.raceEndTime,
   });
 
   final FinishScanStatus status;
@@ -15,9 +17,11 @@ class FinishScanResult {
   final String? runnerName;
   final String? barcodeValue;
   final bool isEarlyStarter;
+  final bool raceAutoClosed;
   final DateTime? startTime;
   final DateTime? finishTime;
   final int? elapsedTimeMs;
+  final DateTime? raceEndTime;
 
   bool get isSuccess =>
       status == FinishScanStatus.success ||
@@ -35,8 +39,10 @@ class FinishScanResult {
     required String runnerName,
     required String barcodeValue,
     bool isEarlyStarter = false,
+    bool raceAutoClosed = false,
     required DateTime finishTime,
     required int elapsedTimeMs,
+    DateTime? raceEndTime,
   }) {
     return FinishScanResult(
       status: FinishScanStatus.success,
@@ -44,8 +50,10 @@ class FinishScanResult {
       runnerName: runnerName,
       barcodeValue: barcodeValue,
       isEarlyStarter: isEarlyStarter,
+      raceAutoClosed: raceAutoClosed,
       finishTime: finishTime,
       elapsedTimeMs: elapsedTimeMs,
+      raceEndTime: raceEndTime,
     );
   }
 
@@ -60,7 +68,7 @@ class FinishScanResult {
   factory FinishScanResult.awaitingEarlyStartRunner() {
     return const FinishScanResult(
       status: FinishScanStatus.awaitingEarlyStartRunner,
-      message: 'Early start mode is ready. Scan the runner barcode now.',
+      message: 'Runner start mode is ready. Scan the runner barcode now.',
     );
   }
 

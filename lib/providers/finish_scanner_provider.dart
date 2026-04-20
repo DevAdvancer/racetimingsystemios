@@ -8,25 +8,31 @@ class FinishScannerState {
   const FinishScannerState({
     required this.lastResult,
     required this.isSubmitting,
+    required this.awaitingEarlyStartRunner,
   });
 
   final FinishScanResult lastResult;
   final bool isSubmitting;
+  final bool awaitingEarlyStartRunner;
 
   factory FinishScannerState.initial() {
     return FinishScannerState(
       lastResult: FinishScanResult.idle(),
       isSubmitting: false,
+      awaitingEarlyStartRunner: false,
     );
   }
 
   FinishScannerState copyWith({
     FinishScanResult? lastResult,
     bool? isSubmitting,
+    bool? awaitingEarlyStartRunner,
   }) {
     return FinishScannerState(
       lastResult: lastResult ?? this.lastResult,
       isSubmitting: isSubmitting ?? this.isSubmitting,
+      awaitingEarlyStartRunner:
+          awaitingEarlyStartRunner ?? this.awaitingEarlyStartRunner,
     );
   }
 }
@@ -43,29 +49,45 @@ class FinishScannerController extends Notifier<FinishScannerState> {
   }
 
   Future<FinishScanResult> submitBuffer([String? value]) async {
-    final barcode = (value ?? '').trim();
+    final barcode = ref
+        .read(barcodeServiceProvider)
+        .normalizeScannedBarcode(value ?? '');
     state = state.copyWith(isSubmitting: true);
 
     final result = await ref
         .read(raceServiceProvider)
         .recordRunnerScan(barcode);
+
     ref.invalidate(checkInProvider);
     ref.invalidate(resultsProvider);
+    await ref.read(currentRaceProvider.notifier).refresh();
 
-    state = state.copyWith(isSubmitting: false, lastResult: result);
+    state = state.copyWith(
+      isSubmitting: false,
+      lastResult: result,
+      awaitingEarlyStartRunner: false,
+    );
     return result;
   }
 
   Future<FinishScanResult> simulateNextScan() async {
     state = state.copyWith(isSubmitting: true);
     final result = await ref.read(raceServiceProvider).simulateNextFinish();
-    state = state.copyWith(isSubmitting: false, lastResult: result);
+    state = state.copyWith(
+      isSubmitting: false,
+      lastResult: result,
+      awaitingEarlyStartRunner: false,
+    );
     ref.invalidate(resultsProvider);
     ref.invalidate(checkInProvider);
+    await ref.read(currentRaceProvider.notifier).refresh();
     return result;
   }
 
   void clearResult() {
-    state = state.copyWith(lastResult: FinishScanResult.idle());
+    state = state.copyWith(
+      lastResult: FinishScanResult.idle(),
+      awaitingEarlyStartRunner: false,
+    );
   }
 }

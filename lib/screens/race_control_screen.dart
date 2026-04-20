@@ -108,11 +108,77 @@ class RaceControlScreen extends ConsumerWidget {
                         child: const Text('GLOBAL START'),
                       ),
                     ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 88,
+                      child: FilledButton(
+                        onPressed: !race.isRunning || race.isFinished
+                            ? null
+                            : () async {
+                                final unfinishedCount = await ref
+                                    .read(raceServiceProvider)
+                                    .countUnfinishedEntries(race.id);
+                                if (!context.mounted) {
+                                  return;
+                                }
+                                final confirmed = await _confirmAction(
+                                  context,
+                                  title: 'Stop race?',
+                                  message: unfinishedCount == 0
+                                      ? 'This will record the global stop time and close finish scanning for this race.'
+                                      : 'This will record the global stop time. $unfinishedCount checked-in ${unfinishedCount == 1 ? 'runner has' : 'runners have'} no finish scan yet, so ${unfinishedCount == 1 ? 'that runner will' : 'those runners will'} be completed using the stop time.',
+                                );
+                                if (!confirmed) {
+                                  return;
+                                }
+                                try {
+                                  await ref
+                                      .read(currentRaceProvider.notifier)
+                                      .endRace(race.id);
+                                  if (context.mounted) {
+                                    await showUserMessageDialog(
+                                      context,
+                                      title: 'Global stop recorded',
+                                      message: unfinishedCount == 0
+                                          ? 'The race clock is now stopped and finish scanning is closed.'
+                                          : 'The race clock is now stopped. $unfinishedCount checked-in ${unfinishedCount == 1 ? 'runner was' : 'runners were'} assigned the global stop time because no finish scan was recorded.',
+                                      tone: UserDialogTone.success,
+                                    );
+                                  }
+                                } catch (error) {
+                                  if (context.mounted) {
+                                    await showUserMessageDialog(
+                                      context,
+                                      title: 'Could not stop race',
+                                      message:
+                                          'The race could not be stopped. Please try again.',
+                                      tone: UserDialogTone.error,
+                                    );
+                                  }
+                                }
+                              },
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Theme.of(context).colorScheme.error,
+                          foregroundColor: Theme.of(
+                            context,
+                          ).colorScheme.onError,
+                        ),
+                        child: const Text('GLOBAL STOP'),
+                      ),
+                    ),
                     const SizedBox(height: 20),
                     const StatusBanner(
                       title: 'Global start',
                       message:
                           'Use the button above to record the shared gun time for the full field, except early starters.',
+                      tone: StatusBannerTone.info,
+                    ),
+                    const SizedBox(height: 20),
+                    const StatusBanner(
+                      title: 'Global stop',
+                      message:
+                          'Use Global Stop when finish scanning is done. Any checked-in runner who still has no finish scan will be assigned the stop time automatically. If the last unfinished runner in this race is scanned at the finish line first, the race closes automatically.',
                       tone: StatusBannerTone.info,
                     ),
                     const SizedBox(height: 20),

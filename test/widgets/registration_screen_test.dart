@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:race_timer/core/theme.dart';
 import 'package:race_timer/models/check_in_match.dart';
 import 'package:race_timer/models/check_in_result.dart';
 import 'package:race_timer/models/check_in_state.dart';
@@ -29,6 +30,13 @@ void main() {
   testWidgets('registration screen shows the kiosk-only runner flow', (
     tester,
   ) async {
+    tester.view.physicalSize = const Size(1366, 834);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -37,7 +45,8 @@ void main() {
           ),
         ],
         child: MaterialApp(
-          theme: ThemeData(useMaterial3: true),
+          theme: buildRoxburyRacesLightTheme(),
+          darkTheme: buildRoxburyRacesDarkTheme(),
           home: const RegistrationScreen(),
         ),
       ),
@@ -46,7 +55,8 @@ void main() {
 
     expect(find.text('Runner Check-In'), findsOneWidget);
     expect(find.text('Saturday Park Run'), findsOneWidget);
-    expect(find.text('Type your name'), findsOneWidget);
+    expect(find.byType(TextField), findsOneWidget);
+    expect(find.text('Kiosk keyboard'), findsOneWidget);
     expect(find.text('Print Barcode'), findsOneWidget);
     expect(find.byIcon(Icons.settings_outlined), findsOneWidget);
 
@@ -57,7 +67,40 @@ void main() {
   });
 
   testWidgets(
-    'registration screen suggests matching names and previews the barcode',
+    'registration screen places the keyboard below the print action on wide layouts',
+    (tester) async {
+      tester.view.physicalSize = const Size(1366, 834);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            currentRaceProvider.overrideWithBuild(
+              (ref, notifier) async => sampleRace,
+            ),
+          ],
+          child: MaterialApp(
+            theme: buildRoxburyRacesLightTheme(),
+            darkTheme: buildRoxburyRacesDarkTheme(),
+            home: const RegistrationScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final keyboardTop = tester.getTopLeft(find.text('Kiosk keyboard')).dy;
+      final printBottom = tester.getBottomLeft(find.text('Print Barcode')).dy;
+
+      expect(keyboardTop, greaterThan(printBottom));
+    },
+  );
+
+  testWidgets(
+    'registration screen suggests matching names from the first keyboard letter and previews the barcode',
     (tester) async {
       tester.view.physicalSize = const Size(1366, 834);
       tester.view.devicePixelRatio = 1.0;
@@ -133,14 +176,15 @@ void main() {
             ),
           ],
           child: MaterialApp(
-            theme: ThemeData(useMaterial3: true),
+            theme: buildRoxburyRacesLightTheme(),
+            darkTheme: buildRoxburyRacesDarkTheme(),
             home: const RegistrationScreen(),
           ),
         ),
       );
       await tester.pumpAndSettle();
 
-      await tester.enterText(find.byType(TextField).first, 'Jo');
+      await tester.tap(find.text('J').first);
       await tester.pumpAndSettle();
 
       expect(find.text('Tap your name from the list'), findsOneWidget);
@@ -154,4 +198,77 @@ void main() {
       expect(find.text('RT-000321'), findsAtLeastNWidgets(1));
     },
   );
+
+  testWidgets(
+    'registration screen keeps the name field active before a race is selected',
+    (tester) async {
+      tester.view.physicalSize = const Size(1366, 834);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            currentRaceProvider.overrideWithBuild(
+              (ref, notifier) async => null,
+            ),
+          ],
+          child: MaterialApp(
+            theme: buildRoxburyRacesLightTheme(),
+            darkTheme: buildRoxburyRacesDarkTheme(),
+            home: const RegistrationScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('J').first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('O').first);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Jo'), findsOneWidget);
+      expect(
+        find.text(
+          'Select today\'s race in organizer setup to load the runner roster.',
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets('registration screen renders with the app dark theme', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1366, 834);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          currentRaceProvider.overrideWithBuild(
+            (ref, notifier) async => sampleRace,
+          ),
+        ],
+        child: MaterialApp(
+          theme: buildRoxburyRacesLightTheme(),
+          darkTheme: buildRoxburyRacesDarkTheme(),
+          themeMode: ThemeMode.dark,
+          home: const RegistrationScreen(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Runner Check-In'), findsOneWidget);
+    expect(find.byType(TextField), findsOneWidget);
+    expect(find.text('Print Barcode'), findsOneWidget);
+  });
 }

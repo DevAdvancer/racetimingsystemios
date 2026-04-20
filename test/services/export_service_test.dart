@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:race_timer/models/check_in_match.dart';
 import 'package:race_timer/models/overall_runner_points_summary.dart';
 import 'package:race_timer/models/race.dart';
+import 'package:race_timer/models/race_entry.dart';
 import 'package:race_timer/models/race_result.dart';
 import 'package:race_timer/models/race_status.dart';
 import 'package:race_timer/models/runner.dart';
@@ -175,6 +177,88 @@ void main() {
         expect(bytes, isNotEmpty);
       },
     );
+
+    test(
+      'builds a printable barcode packet PDF with control and runner rows',
+      () async {
+        const service = ExportService();
+        final race = Race(
+          id: 14,
+          name: 'Saturday Park Run',
+          raceDate: DateTime.utc(2026, 3, 22),
+          gunTime: null,
+          endTime: null,
+          status: RaceStatus.pending,
+          seriesName: 'Spring Series',
+          createdAt: DateTime.utc(2026, 3, 22, 5),
+          entryFeeMinor: 0,
+          currencyCode: 'USD',
+        );
+
+        final bytes = await service.buildQrPacketPdfBytes(
+          race: race,
+          matches: <CheckInMatch>[
+            CheckInMatch(
+              runner: Runner(
+                id: 1,
+                name: 'Jordan Lee',
+                barcodeValue: 'RT-000001',
+                stripePaymentId: null,
+                paymentStatus: PaymentStatus.paid,
+                membershipStatus: MembershipStatus.unknown,
+                createdAt: DateTime.utc(2026, 3, 22, 5),
+              ),
+              entry: const RaceEntry(
+                id: 1,
+                runnerId: 1,
+                raceId: 14,
+                barcodeValue: 'RT-000001',
+                checkedInAt: null,
+                startTime: null,
+                earlyStart: false,
+                finishTime: null,
+                elapsedTimeMs: null,
+              ),
+              race: race,
+            ),
+          ],
+        );
+
+        expect(bytes, isNotEmpty);
+        expect(
+          service.buildQrPacketPdfFileName(
+            race,
+            exportedAt: DateTime.utc(2026, 3, 22, 8),
+          ),
+          allOf(contains('20260322'), contains('race-14'), endsWith('.pdf')),
+        );
+      },
+    );
+
+    test('describes the visible save location for iOS exports', () {
+      const service = ExportService();
+
+      final location = service.describeVisibleSaveLocation(
+        fileName: 'barcode_packet.pdf',
+        useFilesAppLocation: true,
+      );
+
+      expect(
+        location,
+        'Files > On My iPad/iPhone > RaceTimerApp > Exports > barcode_packet.pdf',
+      );
+    });
+
+    test('describes the visible save location for desktop exports', () {
+      const service = ExportService();
+
+      final location = service.describeVisibleSaveLocation(
+        fileName: 'results.pdf',
+        filePath: '/tmp/results.pdf',
+      );
+
+      expect(location, '/tmp/results.pdf');
+    });
 
     test('groups CSV output into multiple distance sections', () {
       const service = ExportService();

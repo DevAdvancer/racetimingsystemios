@@ -148,8 +148,8 @@ class DatabaseService {
     return Race.fromMap(rows.first);
   }
 
-  Future<Race?> getRace(int id) async {
-    final db = await _helper.database;
+  Future<Race?> getRace(int id, {DatabaseExecutor? executor}) async {
+    final db = await _resolveExecutor(executor);
     final rows = await db.query(
       'races',
       where: 'id = ?',
@@ -848,15 +848,54 @@ class DatabaseService {
     });
   }
 
-  Future<List<RaceEntry>> listUnfinishedEntries(int raceId) async {
-    final db = await _helper.database;
+  Future<List<RaceEntry>> listUnfinishedEntries(
+    int raceId, {
+    DatabaseExecutor? executor,
+  }) async {
+    final db = await _resolveExecutor(executor);
     final rows = await db.query(
       'race_entries',
-      where: 'race_id = ? AND finish_time IS NULL',
+      where:
+          'race_id = ? AND checked_in_at IS NOT NULL AND finish_time IS NULL',
       whereArgs: <Object?>[raceId],
       orderBy: 'id ASC',
     );
     return rows.map(RaceEntry.fromMap).toList();
+  }
+
+  Future<int> countUnfinishedEntries(
+    int raceId, {
+    DatabaseExecutor? executor,
+  }) async {
+    final db = await _resolveExecutor(executor);
+    final rows = await db.rawQuery(
+      '''
+      SELECT COUNT(*) AS unfinished_count
+      FROM race_entries
+      WHERE race_id = ?
+        AND checked_in_at IS NOT NULL
+        AND finish_time IS NULL;
+      ''',
+      <Object?>[raceId],
+    );
+    return (rows.first['unfinished_count'] as int?) ?? 0;
+  }
+
+  Future<int> countRunnersWithoutFinishTime(
+    int raceId, {
+    DatabaseExecutor? executor,
+  }) async {
+    final db = await _resolveExecutor(executor);
+    final rows = await db.rawQuery(
+      '''
+      SELECT COUNT(*) AS unfinished_count
+      FROM race_entries
+      WHERE race_id = ?
+        AND finish_time IS NULL;
+      ''',
+      <Object?>[raceId],
+    );
+    return (rows.first['unfinished_count'] as int?) ?? 0;
   }
 
   Future<List<RunnerPointsSummary>> listRaceRunnerPointsSummaries(

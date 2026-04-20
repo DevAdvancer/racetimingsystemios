@@ -54,9 +54,9 @@ private enum PrinterConnectionKind: String {
 
 private struct PrinterRequest {
   init(arguments: [String: Any]) {
-    host = (arguments["host"] as? String)?
+    host = ((arguments["host"] as? String) ?? (arguments["printerHost"] as? String))?
       .trimmingCharacters(in: .whitespacesAndNewlines)
-    media = (arguments["media"] as? String)?
+    media = ((arguments["media"] as? String) ?? (arguments["printerMedia"] as? String))?
       .trimmingCharacters(in: .whitespacesAndNewlines)
     connectionType = PrinterConnectionKind(storageValue: arguments["connectionType"] as? String)
     runnerName = (arguments["runnerName"] as? String)?
@@ -164,7 +164,7 @@ final class BrotherPrinterBridge: NSObject {
         "connectionType": request.connectionType.rawValue,
         "runnerName": "Printer Test",
         "barcodeValue": "TEST-PRINT",
-        "raceName": "RoxburyRaces"
+        "raceName": "RaceTimerApp"
       ]
       return PrinterRequest(arguments: values)
     }()
@@ -294,6 +294,17 @@ final class BrotherPrinterBridge: NSObject {
     switch request.connectionType {
     case .network:
       if let host = request.host, !host.isEmpty {
+        let matches = matchingNetworkChannels(for: host)
+        if let first = matches.first, matches.count == 1 {
+          return (
+            resolvedPrinter(from: first, connectionType: .network, automaticallyDiscovered: false),
+            nil
+          )
+        }
+        if matches.count > 1 {
+          return (nil, ("error", "Multiple Brother QL-820NWB printers matched that saved Wi-Fi target. Save the printer IP address in Setup so the app connects to the correct device."))
+        }
+
         return (
           ResolvedPrinter(
             channel: BRLMChannel(wifiIPAddress: host),
@@ -306,11 +317,7 @@ final class BrotherPrinterBridge: NSObject {
         )
       }
 
-      let option = BRLMNetworkSearchOption()
-      option.printerList = supportedPrinterNames
-      option.searchDuration = 5
-      let searchResult = BRLMPrinterSearcher.startNetworkSearch(option) { _ in }
-      let matchingChannels = searchResult.channels.filter(isSupportedBrotherChannel)
+      let matchingChannels = searchNetworkChannels()
       if let first = matchingChannels.first, matchingChannels.count == 1 {
         return (
           resolvedPrinter(from: first, connectionType: .network, automaticallyDiscovered: true),
@@ -386,6 +393,56 @@ final class BrotherPrinterBridge: NSObject {
     return supportedPrinterNames.contains(modelName)
   }
 
+  private func searchNetworkChannels() -> [BRLMChannel] {
+    let option = BRLMNetworkSearchOption()
+    option.printerList = supportedPrinterNames
+    option.searchDuration = 8   // 8 s gives QL-820NWB enough time on busy race-day Wi-Fi
+    let searchResult = BRLMPrinterSearcher.startNetworkSearch(option) { _ in }
+    return searchResult.channels.filter(isSupportedBrotherChannel)
+  }
+
+  private func matchingNetworkChannels(for query: String) -> [BRLMChannel] {
+    let normalizedQueryVariants = networkTargetVariants(query)
+    return searchNetworkChannels().filter { channel in
+      matchesNetworkTarget(normalizedQueryVariants: normalizedQueryVariants, channel: channel)
+    }
+  }
+
+  private func matchesNetworkTarget(
+    normalizedQueryVariants: Set<String>,
+    channel: BRLMChannel
+  ) -> Bool {
+    let candidates = [
+      channel.channelInfo,
+      extraInfoValue(channel.extraInfo, key: BRLMChannelExtraInfoKeyIpAddress),
+      extraInfoValue(channel.extraInfo, key: BRLMChannelExtraInfoKeyNodeName),
+      extraInfoValue(channel.extraInfo, key: BRLMChannelExtraInfoKeyAdvertiseLocalName),
+      extraInfoValue(channel.extraInfo, key: BRLMChannelExtraInfoKeyLocation)
+    ]
+
+    return candidates
+      .compactMap { $0 }
+      .flatMap { networkTargetVariants($0) }
+      .contains { normalizedQueryVariants.contains($0) }
+  }
+
+  private func networkTargetVariants(_ value: String) -> Set<String> {
+    let normalized = normalizedNetworkIdentifier(value)
+    if normalized.isEmpty {
+      return []
+    }
+    if normalized.hasSuffix(".local") {
+      return [normalized, String(normalized.dropLast(".local".count))]
+    }
+    return [normalized, "\(normalized).local"]
+  }
+
+  private func normalizedNetworkIdentifier(_ value: String) -> String {
+    value
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+      .lowercased()
+  }
+
   private func matchesBluetoothTarget(query: String, channel: BRLMChannel) -> Bool {
     let normalizedQuery = normalizedIdentifier(query)
     let candidates = [
@@ -438,7 +495,7 @@ final class BrotherPrinterBridge: NSObject {
     }
 
     if mediaInfo.width_mm == 62 && mediaInfo.isHeightInfinite {
-      return "62mm continuous"
+      return "62mm"
     }
 
     if mediaInfo.width_mm > 0 && mediaInfo.height_mm > 0 && !mediaInfo.isHeightInfinite {
@@ -459,7 +516,7 @@ final class BrotherPrinterBridge: NSObject {
 
     let mediaValue = (media ?? "").lowercased()
     switch mediaValue {
-    case "", "62mm continuous", "62 continuous", "62mm roll", "62 roll":
+    case "", "62mm", "62", "62mm continuous", "62 continuous", "62mm roll", "62 roll":
       printSettings.labelSize = .rollW62
     case "62mm red/black", "62mm red black", "62mm rb":
       printSettings.labelSize = .rollW62RB
@@ -488,7 +545,7 @@ final class BrotherPrinterBridge: NSObject {
     let size = CGSize(width: 696, height: 300)
     let renderer = UIGraphicsImageRenderer(size: size)
     let barcodeImage = makeBarcodeImage(from: barcodeValue)
-    let raceTitle = (raceName?.isEmpty == false ? raceName : "RoxburyRaces") ?? "RoxburyRaces"
+    let raceTitle = (raceName?.isEmpty == false ? raceName : "RaceTimerApp") ?? "RaceTimerApp"
 
     return renderer.image { context in
       UIColor.white.setFill()

@@ -559,6 +559,98 @@ void main() {
     },
   );
 
+  test(
+    'reused imported runner barcode finishes only the current race entry',
+    () async {
+      final weekOne = await raceService.createRace(
+        name: 'Week 1',
+        raceDate: DateTime.utc(2000, 1, 1),
+      );
+      await raceService.importRoster(
+        const RosterImport(
+          sourceName: 'week1.xlsx',
+          runners: <ImportedRunnerData>[ImportedRunnerData(name: 'Casey Lee')],
+        ),
+      );
+      final weekOneLookup = await raceService.lookupRunnerForCheckIn(
+        'Casey Lee',
+      );
+
+      final weekTwo = await raceService.createRace(
+        name: 'Week 2',
+        raceDate: DateTime.utc(2000, 1, 8),
+      );
+      await raceService.importRoster(
+        const RosterImport(
+          sourceName: 'week2.xlsx',
+          runners: <ImportedRunnerData>[ImportedRunnerData(name: 'Casey Lee')],
+        ),
+      );
+      final weekTwoLookup = await raceService.lookupRunnerForCheckIn(
+        'Casey Lee',
+      );
+
+      expect(
+        weekTwoLookup.selectedMatch?.entry.barcodeValue,
+        weekOneLookup.selectedMatch?.entry.barcodeValue,
+      );
+
+      await raceService.startRace(weekTwo.id);
+      final finish = await raceService.recordRunnerScan(
+        weekTwoLookup.selectedMatch!.entry.barcodeValue,
+      );
+
+      final weekOneResults = await raceService.getResults(weekOne.id);
+      final weekTwoResults = await raceService.getResults(weekTwo.id);
+
+      expect(finish.status, FinishScanStatus.success);
+      expect(weekOneResults.single.finishTime, isNull);
+      expect(weekOneResults.single.elapsedTimeMs, isNull);
+      expect(weekTwoResults.single.finishTime, isNotNull);
+      expect(weekTwoResults.single.elapsedTimeMs, isNotNull);
+    },
+  );
+
+  test(
+    'reused ad-hoc runner barcode finishes only the current race entry',
+    () async {
+      final weekOne = await raceService.createRace(
+        name: 'Week 1',
+        raceDate: DateTime.utc(2000, 2, 1),
+      );
+      final weekOneResult = await raceService.createAdHocRunnerAndPrint(
+        'Morgan Diaz',
+      );
+
+      final weekTwo = await raceService.createRace(
+        name: 'Week 2',
+        raceDate: DateTime.utc(2000, 2, 8),
+      );
+      final weekTwoResult = await raceService.createAdHocRunnerAndPrint(
+        'Morgan Diaz',
+      );
+
+      expect(
+        weekTwoResult.selectedMatch?.entry.barcodeValue,
+        weekOneResult.selectedMatch?.entry.barcodeValue,
+      );
+
+      await raceService.startRace(weekTwo.id);
+      final finish = await raceService.recordRunnerScan(
+        weekTwoResult.selectedMatch!.entry.barcodeValue,
+      );
+
+      final weekOneResults = await raceService.getResults(weekOne.id);
+      final weekTwoResults = await raceService.getResults(weekTwo.id);
+
+      expect(finish.status, FinishScanStatus.success);
+      expect(weekOneResults.single.finishTime, isNull);
+      expect(weekOneResults.single.elapsedTimeMs, isNull);
+      expect(weekTwoResults.single.finishTime, isNotNull);
+      expect(weekTwoResults.single.elapsedTimeMs, isNotNull);
+    },
+  );
+
   test('parseBulkRaceDates reads and deduplicates common date formats', () {
     final dates = raceService.parseBulkRaceDates(
       '2026-03-28\n03/28/2026\nApr 4, 2026',
@@ -633,6 +725,25 @@ void main() {
     expect(selectedRace?.id, marchRace.id);
   });
 
+  test('resolveSelectedRace prefers the saved organizer race choice', () async {
+    final now = DateTime.now();
+    await raceService.createRace(
+      name: 'Today Race',
+      raceDate: DateTime(now.year, now.month, now.day),
+    );
+    final chosenRace = await raceService.createRace(
+      name: 'Chosen Race',
+      raceDate: DateTime.utc(2026, 4, 4),
+    );
+    await settingsService.saveSettings(
+      AppSettings.defaults().copyWith(selectedRaceId: chosenRace.id),
+    );
+
+    final selectedRace = await raceService.resolveSelectedRace();
+
+    expect(selectedRace?.id, chosenRace.id);
+  });
+
   test('startCurrentRaceFromScanner starts the selected race', () async {
     final race = await raceService.createRace(name: 'Spring 5K');
     await settingsService.saveSettings(
@@ -644,6 +755,25 @@ void main() {
     expect(result.status, FinishScanStatus.raceStarted);
     expect(result.startTime, isNotNull);
   });
+
+  test(
+    'recordRunnerScan starts the selected race when the START RACE command is scanned',
+    () async {
+      final race = await raceService.createRace(name: 'Spring 5K');
+      await settingsService.saveSettings(
+        AppSettings.defaults().copyWith(selectedRaceId: race.id),
+      );
+
+      final result = await raceService.recordRunnerScan(
+        BarcodeService.startRaceCommand,
+      );
+      final updatedRace = await raceService.getRace(race.id);
+
+      expect(result.status, FinishScanStatus.raceStarted);
+      expect(updatedRace?.isRunning, isTrue);
+      expect(updatedRace?.gunTime, isNotNull);
+    },
+  );
 
   test('printCheckInMatches prints the roster row by row', () async {
     final race = await raceService.createRace(name: 'Spring 5K');
@@ -763,6 +893,15 @@ void main() {
       );
     },
   );
+
+  test('prepareEarlyStartRunnerScan readies the next runner scan', () async {
+    await raceService.createRace(name: 'Spring 5K');
+
+    final result = await raceService.prepareEarlyStartRunnerScan();
+
+    expect(result.status, FinishScanStatus.awaitingEarlyStartRunner);
+    expect(result.message, contains('Scan the runner barcode now'));
+  });
 
   test('global start does not overwrite existing early starts', () async {
     final race = await raceService.createRace(name: 'Spring 5K');
@@ -893,6 +1032,49 @@ void main() {
     expect(roster.single.rosterStatus, CheckInRosterStatus.raceCompleted);
   });
 
+  test(
+    'recordFinish auto-closes the race after the last unfinished runner finishes',
+    () async {
+      final race = await raceService.createRace(name: 'Spring 5K');
+      await raceService.importRoster(
+        const RosterImport(
+          sourceName: 'spring.xlsx',
+          runners: <ImportedRunnerData>[
+            ImportedRunnerData(name: 'Riley'),
+            ImportedRunnerData(name: 'Taylor'),
+          ],
+        ),
+      );
+      final firstLookup = await raceService.lookupRunnerForCheckIn('Riley');
+      final secondLookup = await raceService.lookupRunnerForCheckIn('Taylor');
+      await raceService.printCheckInMatch(firstLookup.selectedMatch!);
+      await raceService.printCheckInMatch(secondLookup.selectedMatch!);
+      await raceService.startRace(race.id);
+
+      final firstFinish = await raceService.recordFinish(
+        firstLookup.selectedMatch!.entry.barcodeValue,
+      );
+      final runningRace = await raceService.getRace(race.id);
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      final secondFinish = await raceService.recordFinish(
+        secondLookup.selectedMatch!.entry.barcodeValue,
+      );
+      final finishedRace = await raceService.getRace(race.id);
+
+      expect(firstFinish.status, FinishScanStatus.success);
+      expect(firstFinish.raceAutoClosed, isFalse);
+      expect(runningRace?.isRunning, isTrue);
+      expect(secondFinish.status, FinishScanStatus.success);
+      expect(secondFinish.raceAutoClosed, isTrue);
+      expect(secondFinish.raceEndTime, isNotNull);
+      expect(finishedRace?.isFinished, isTrue);
+      expect(
+        finishedRace?.endTime?.millisecondsSinceEpoch,
+        secondFinish.raceEndTime?.millisecondsSinceEpoch,
+      );
+    },
+  );
+
   test('endRace stores a final total when volunteers stop the timer', () async {
     final race = await raceService.createRace(name: 'Spring 5K');
     await raceService.startRace(race.id);
@@ -905,6 +1087,51 @@ void main() {
     expect(endedRace.totalElapsedTimeMs, isNotNull);
     expect(endedRace.totalElapsedTimeMs, greaterThanOrEqualTo(0));
   });
+
+  test(
+    'endRace assigns the global stop time to checked-in runners without a finish scan',
+    () async {
+      final race = await raceService.createRace(name: 'Spring 5K');
+      await raceService.importRoster(
+        const RosterImport(
+          sourceName: 'spring.xlsx',
+          runners: <ImportedRunnerData>[
+            ImportedRunnerData(name: 'Taylor'),
+            ImportedRunnerData(name: 'Jordan'),
+          ],
+        ),
+      );
+      final checkedInLookup = await raceService.lookupRunnerForCheckIn(
+        'Taylor',
+      );
+      await raceService.printCheckInMatch(checkedInLookup.selectedMatch!);
+      final startedRace = await raceService.startRace(race.id);
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      final endedRace = await raceService.endRace(race.id);
+      final roster = await raceService.listCheckInRoster(endedRace);
+      final checkedInRunner = roster.firstWhere(
+        (match) => match.runner.name == 'Taylor',
+      );
+      final untouchedRunner = roster.firstWhere(
+        (match) => match.runner.name == 'Jordan',
+      );
+      final expectedElapsed = endedRace.endTime!
+          .difference(startedRace.gunTime!)
+          .inMilliseconds;
+
+      expect(
+        checkedInRunner.entry.finishTime?.millisecondsSinceEpoch,
+        endedRace.endTime?.millisecondsSinceEpoch,
+      );
+      expect(
+        checkedInRunner.entry.elapsedTimeMs,
+        inInclusiveRange(expectedElapsed - 5, expectedElapsed + 5),
+      );
+      expect(untouchedRunner.entry.finishTime, isNull);
+      expect(untouchedRunner.rosterStatus, CheckInRosterStatus.registered);
+    },
+  );
 
   test('ending the race shows checked-in riders as race completed', () async {
     final race = await raceService.createRace(name: 'Spring 5K');

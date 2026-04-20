@@ -43,9 +43,23 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   late final Future<PackageInfo> _packageInfoFuture;
   bool _loadedSettings = false;
   PrinterConnectionType _printerConnectionType =
-      PrinterConnectionType.bluetooth;
+      PrinterConnectionType.network;
   DateTime? _lastScannerCheckAt;
   String? _lastScannerCheckValue;
+
+  String _normalizePrinterMediaValue(String value) {
+    final trimmed = value.trim().toLowerCase();
+    if (trimmed.isEmpty) {
+      return AppConstants.defaultPrinterMedia;
+    }
+    if (trimmed == '62mm continuous' ||
+        trimmed == '62 continuous' ||
+        trimmed == '62mm roll' ||
+        trimmed == '62 roll') {
+      return AppConstants.defaultPrinterMedia;
+    }
+    return value.trim();
+  }
 
   @override
   void initState() {
@@ -81,7 +95,9 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       }
       _loadedSettings = true;
       _printerHostController.text = settings.printerHost;
-      _printerMediaController.text = settings.printerMedia;
+      _printerMediaController.text = _normalizePrinterMediaValue(
+        settings.printerMedia,
+      );
       _adminPasscodeController.text = settings.adminPasscode;
       _printerConnectionType = settings.printerConnectionType;
       _lastScannerCheckAt = settings.lastScannerCheckAt;
@@ -233,7 +249,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                   title: 'Step 3: Printer Setup',
                   children: [
                     Text(
-                      'Set up the Brother QL-820NWB connection for this iPad. Bluetooth uses a saved manual printer target, and Wi-Fi can report when the printer is reachable on the current network.',
+                      'Set up the Brother QL-820NWB connection for this iPad. Bluetooth uses a saved manual printer target, and Wi-Fi can use a saved IP/hostname or auto-discover the printer on the current network.',
                       style: Theme.of(context).textTheme.bodyLarge,
                     ),
                     const SizedBox(height: 16),
@@ -263,10 +279,11 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                       decoration: InputDecoration(
                         labelText: _printerConnectionType.targetFieldLabel,
                         helperText: _printerConnectionType.targetHelpText,
-                        hintText: _printerConnectionType ==
+                        hintText:
+                            _printerConnectionType ==
                                 PrinterConnectionType.bluetooth
                             ? 'Example: QL-820NWB or 00:80:92:12:34:56'
-                            : 'Example: 192.168.1.45 or brother-printer.local',
+                            : 'Example: 192.168.1.45, brother-printer.local, or leave blank to auto-discover',
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -274,6 +291,8 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                       controller: _printerMediaController,
                       decoration: const InputDecoration(
                         labelText: 'Label size',
+                        helperText:
+                            'Use 62mm for the standard Brother label roll.',
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -313,8 +332,9 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                                   AppSettings.defaults();
                               final updated = currentSettings.copyWith(
                                 printerHost: _printerHostController.text.trim(),
-                                printerMedia: _printerMediaController.text
-                                    .trim(),
+                                printerMedia: _normalizePrinterMediaValue(
+                                  _printerMediaController.text,
+                                ),
                                 printerConnectionType: _printerConnectionType,
                               );
                               await ref

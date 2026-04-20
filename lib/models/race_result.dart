@@ -55,6 +55,19 @@ class RaceResultRow {
     return 'Registered';
   }
 
+  String get editableStatusLabel {
+    if (finishTime != null) {
+      return 'Ended';
+    }
+    if (startTime != null) {
+      return 'Started';
+    }
+    if (checkedInAt != null) {
+      return 'In Race';
+    }
+    return 'Registered';
+  }
+
   factory RaceResultRow.fromMap(Map<String, Object?> map) {
     return RaceResultRow(
       entryId: map['entry_id'] as int,

@@ -1,9 +1,9 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:file_selector/file_selector.dart';
 import 'package:csv/csv.dart';
 import 'package:excel/excel.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:intl/intl.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
@@ -12,11 +12,13 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:race_timer/core/constants.dart';
 import 'package:race_timer/core/platform_support.dart';
 import 'package:race_timer/core/user_facing_error.dart';
+import 'package:race_timer/models/check_in_match.dart';
 import 'package:race_timer/models/overall_runner_points_summary.dart';
 import 'package:race_timer/models/race.dart';
 import 'package:race_timer/models/race_result.dart';
-import 'package:race_timer/models/runner_points_summary.dart';
 import 'package:race_timer/models/runner.dart';
+import 'package:race_timer/models/runner_points_summary.dart';
+import 'package:race_timer/services/barcode_service.dart';
 import 'package:race_timer/services/race_service.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -42,6 +44,8 @@ class ExportResult {
 
 class ExportService {
   const ExportService();
+
+  static const String mobileExportsFolderName = 'Exports';
 
   static const List<String> rosterTemplateHeaders = <String>[
     'Name',
@@ -121,6 +125,13 @@ class ExportService {
     final raceDate = DateFormat('yyyyMMdd').format(race.raceDate.toLocal());
     final raceName = _slugify(race.name);
     return '${AppConstants.resultsPdfFilePrefix}_${raceDate}_${raceName}_race-${race.id}_${exportMoment.millisecondsSinceEpoch}.pdf';
+  }
+
+  String buildQrPacketPdfFileName(Race race, {DateTime? exportedAt}) {
+    final exportMoment = exportedAt ?? DateTime.now();
+    final raceDate = DateFormat('yyyyMMdd').format(race.raceDate.toLocal());
+    final raceName = _slugify(race.name);
+    return '${AppConstants.qrPacketPdfFilePrefix}_${raceDate}_${raceName}_race-${race.id}_${exportMoment.millisecondsSinceEpoch}.pdf';
   }
 
   String buildPointsCsv({
@@ -206,6 +217,17 @@ class ExportService {
     return '${AppConstants.rosterTemplateFilePrefix}_${exportMoment.millisecondsSinceEpoch}.xlsx';
   }
 
+  String describeVisibleSaveLocation({
+    required String fileName,
+    String? filePath,
+    bool useFilesAppLocation = false,
+  }) {
+    if (useFilesAppLocation) {
+      return 'Files > On My iPad/iPhone > ${AppConstants.appName} > $mobileExportsFolderName > $fileName';
+    }
+    return filePath?.isNotEmpty == true ? filePath! : fileName;
+  }
+
   Future<ExportResult> exportResults({
     required Race race,
     required List<RaceResultRow> rows,
@@ -219,9 +241,10 @@ class ExportService {
           'The results CSV could not be saved. Please choose a different location and try again.',
       shareText: 'Race results for ${race.name}',
       shareSubject: '${AppConstants.appName} Results Export',
-      shareReadyMessage: 'Results CSV is ready to share.',
+      shareReadyMessage:
+          'The share sheet also opened so you can send the CSV right away.',
       shareFallbackMessage:
-          'Results CSV for ${race.name} (${_formatRaceDate(race.raceDate)}) was saved on this device even though the share sheet could not open here.',
+          'If the share sheet did not open, the CSV is still saved in that location.',
     );
   }
 
@@ -241,9 +264,33 @@ class ExportService {
           'The results PDF could not be saved. Please choose a different location and try again.',
       shareText: 'Race results sheet for ${race.name}',
       shareSubject: '${AppConstants.appName} Results PDF Export',
-      shareReadyMessage: 'Results PDF is ready to share.',
+      shareReadyMessage:
+          'The share sheet also opened so you can send the PDF right away.',
       shareFallbackMessage:
-          'Results PDF for ${race.name} (${_formatRaceDate(race.raceDate)}) was saved on this device even though the share sheet could not open here.',
+          'If the share sheet did not open, the PDF is still saved in that location.',
+    );
+  }
+
+  Future<ExportResult> exportQrPacketPdf({
+    required Race race,
+    required List<CheckInMatch> matches,
+  }) async {
+    return _exportBinaryFile(
+      fileName: buildQrPacketPdfFileName(race),
+      bytes: await buildQrPacketPdfBytes(race: race, matches: matches),
+      acceptedTypeGroups: const <XTypeGroup>[
+        XTypeGroup(label: 'PDF', extensions: <String>['pdf']),
+      ],
+      successMessage:
+          'Barcode packet PDF for ${race.name} (${_formatRaceDate(race.raceDate)}) saved successfully.',
+      saveFailureFallback:
+          'The barcode packet PDF could not be saved. Please choose a different location and try again.',
+      shareText: 'Barcode packet for ${race.name}',
+      shareSubject: '${AppConstants.appName} Barcode Packet Export',
+      shareReadyMessage:
+          'The share sheet also opened so you can send the barcode packet right away.',
+      shareFallbackMessage:
+          'If the share sheet did not open, the barcode packet PDF is still saved in that location.',
     );
   }
 
@@ -260,9 +307,10 @@ class ExportService {
           'The points CSV could not be saved. Please choose a different location and try again.',
       shareText: 'Race points for ${race.name}',
       shareSubject: '${AppConstants.appName} Points Export',
-      shareReadyMessage: 'Points CSV is ready to share.',
+      shareReadyMessage:
+          'The share sheet also opened so you can send the CSV right away.',
       shareFallbackMessage:
-          'Points CSV for ${race.name} (${_formatRaceDate(race.raceDate)}) was saved on this device even though the share sheet could not open here.',
+          'If the share sheet did not open, the CSV is still saved in that location.',
     );
   }
 
@@ -283,9 +331,10 @@ class ExportService {
           'The overall points CSV could not be saved. Please choose a different location and try again.',
       shareText: 'Overall race points standings',
       shareSubject: '${AppConstants.appName} Overall Points Export',
-      shareReadyMessage: 'Overall points CSV is ready to share.',
+      shareReadyMessage:
+          'The share sheet also opened so you can send the CSV right away.',
       shareFallbackMessage:
-          'Overall points CSV was saved on this device even though the share sheet could not open here.',
+          'If the share sheet did not open, the CSV is still saved in that location.',
     );
   }
 
@@ -317,9 +366,10 @@ class ExportService {
           'The roster Excel template could not be saved. Please choose a different location and try again.',
       shareText: '${AppConstants.appName} roster template',
       shareSubject: '${AppConstants.appName} Roster Template',
-      shareReadyMessage: 'Roster Excel template is ready to share.',
+      shareReadyMessage:
+          'The share sheet also opened so you can send the Excel file right away.',
       shareFallbackMessage:
-          'The roster Excel template was saved on this device even though the share sheet could not open here.',
+          'If the share sheet did not open, the Excel file is still saved in that location.',
     );
   }
 
@@ -421,15 +471,166 @@ class ExportService {
     return document.save();
   }
 
+  Future<Uint8List> buildQrPacketPdfBytes({
+    required Race race,
+    required List<CheckInMatch> matches,
+  }) async {
+    final document = pw.Document();
+    final barcodeService = const BarcodeService();
+    final runnerDocuments = matches.toList(growable: false)
+      ..sort(
+        (left, right) => left.runner.name.toLowerCase().compareTo(
+          right.runner.name.toLowerCase(),
+        ),
+      );
+    final runnerLabels = runnerDocuments
+        .map(
+          (match) => barcodeService.buildLabelDocument(
+            race: race,
+            runner: match.runner,
+            entry: match.entry,
+          ),
+        )
+        .toList(growable: false);
+    final commandLabels = <LabelDocument>[
+      barcodeService.buildCommandLabelDocument(
+        label: 'START RACE',
+        barcodeValue: BarcodeService.startRaceCommand,
+        raceId: race.id,
+        raceName: race.name,
+      ),
+    ];
+
+    document.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.letter,
+        margin: const pw.EdgeInsets.all(24),
+        build: (context) => <pw.Widget>[
+          pw.Text(
+            race.name,
+            style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold),
+          ),
+          pw.SizedBox(height: 6),
+          pw.Text(
+            _formatRaceDateLong(race.raceDate),
+            style: const pw.TextStyle(fontSize: 14),
+          ),
+          pw.SizedBox(height: 6),
+          pw.Text(
+            '${runnerLabels.length} runner barcode ${runnerLabels.length == 1 ? 'row' : 'rows'} plus the START RACE barcode',
+            style: const pw.TextStyle(fontSize: 12),
+          ),
+          pw.SizedBox(height: 16),
+          pw.Container(
+            width: double.infinity,
+            padding: const pw.EdgeInsets.all(12),
+            decoration: pw.BoxDecoration(
+              border: pw.Border.all(color: PdfColors.grey500),
+              borderRadius: pw.BorderRadius.circular(10),
+            ),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: <pw.Widget>[
+                pw.Text(
+                  'How to use this packet',
+                  style: pw.TextStyle(fontSize: 13),
+                ),
+                pw.SizedBox(height: 6),
+                pw.Text(
+                  '1. Scan START RACE once at the official gun time.',
+                  style: pw.TextStyle(fontSize: 11),
+                ),
+                pw.Text(
+                  '2. Before the global start, scan a runner barcode to store that runner\'s personal start time.',
+                  style: pw.TextStyle(fontSize: 11),
+                ),
+                pw.Text(
+                  '3. After the global start, scan that same runner barcode again to record that runner\'s finish for this race.',
+                  style: pw.TextStyle(fontSize: 11),
+                ),
+                pw.Text(
+                  '4. Global Stop still happens from Race Control when finish scanning is done.',
+                  style: pw.TextStyle(fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+          pw.SizedBox(height: 18),
+          pw.Text(
+            'Race-Control Barcode',
+            style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+          ),
+          pw.SizedBox(height: 10),
+          pw.Column(
+            children: commandLabels
+                .map(_buildBarcodePacketRow)
+                .toList(growable: false),
+          ),
+          pw.SizedBox(height: 20),
+          pw.Text(
+            'Runner Barcode Rows',
+            style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+          ),
+          pw.SizedBox(height: 10),
+          if (runnerLabels.isEmpty)
+            pw.Text(
+              'No runners were available for this race yet.',
+              style: const pw.TextStyle(fontSize: 11),
+            )
+          else
+            pw.Column(
+              children: runnerLabels
+                  .map(_buildBarcodePacketRow)
+                  .toList(growable: false),
+            ),
+        ],
+      ),
+    );
+
+    return document.save();
+  }
+
+  Future<Directory> _getMobileExportsDirectory() async {
+    final documentsDirectory = await getApplicationDocumentsDirectory();
+    final exportsDirectory = Directory(
+      path.join(documentsDirectory.path, mobileExportsFolderName),
+    );
+    await exportsDirectory.create(recursive: true);
+    return exportsDirectory;
+  }
+
+  String _buildSavedMessage({
+    required String baseMessage,
+    required String fileName,
+    String? filePath,
+    bool useFilesAppLocation = false,
+    String? followUpMessage,
+  }) {
+    final savedLocation = describeVisibleSaveLocation(
+      fileName: fileName,
+      filePath: filePath,
+      useFilesAppLocation: useFilesAppLocation,
+    );
+    final buffer = StringBuffer(baseMessage)
+      ..write('\n\nSaved to:\n')
+      ..write(savedLocation);
+    if (followUpMessage != null && followUpMessage.trim().isNotEmpty) {
+      buffer
+        ..write('\n\n')
+        ..write(followUpMessage.trim());
+    }
+    return buffer.toString();
+  }
+
   Future<File> _writeMobileTextFile(String fileName, String contents) async {
-    final directory = await getApplicationDocumentsDirectory();
+    final directory = await _getMobileExportsDirectory();
     final file = File(path.join(directory.path, fileName));
     await file.writeAsString(contents);
     return file;
   }
 
   Future<File> _writeMobileBinaryFile(String fileName, Uint8List bytes) async {
-    final directory = await getApplicationDocumentsDirectory();
+    final directory = await _getMobileExportsDirectory();
     final file = File(path.join(directory.path, fileName));
     await file.writeAsBytes(bytes, flush: true);
     return file;
@@ -459,7 +660,14 @@ class ExportService {
 
         final file = File(location.path);
         await file.writeAsString(contents);
-        return ExportResult.success(file.path, successMessage);
+        return ExportResult.success(
+          file.path,
+          _buildSavedMessage(
+            baseMessage: successMessage,
+            fileName: fileName,
+            filePath: file.path,
+          ),
+        );
       } catch (error) {
         return ExportResult.failure(
           userFacingErrorMessage(error, fallback: saveFailureFallback),
@@ -476,10 +684,28 @@ class ExportService {
           subject: shareSubject,
         ),
       );
-      return ExportResult.success(file.path, shareReadyMessage);
+      return ExportResult.success(
+        file.path,
+        _buildSavedMessage(
+          baseMessage: successMessage,
+          fileName: fileName,
+          filePath: file.path,
+          useFilesAppLocation: PlatformSupport.isIOS,
+          followUpMessage: shareReadyMessage,
+        ),
+      );
     } catch (_) {
       final file = await _writeMobileTextFile(fileName, contents);
-      return ExportResult.success(file.path, shareFallbackMessage);
+      return ExportResult.success(
+        file.path,
+        _buildSavedMessage(
+          baseMessage: successMessage,
+          fileName: fileName,
+          filePath: file.path,
+          useFilesAppLocation: PlatformSupport.isIOS,
+          followUpMessage: shareFallbackMessage,
+        ),
+      );
     }
   }
 
@@ -506,7 +732,14 @@ class ExportService {
 
         final file = File(location.path);
         await file.writeAsBytes(bytes, flush: true);
-        return ExportResult.success(file.path, successMessage);
+        return ExportResult.success(
+          file.path,
+          _buildSavedMessage(
+            baseMessage: successMessage,
+            fileName: fileName,
+            filePath: file.path,
+          ),
+        );
       } catch (error) {
         return ExportResult.failure(
           userFacingErrorMessage(error, fallback: saveFailureFallback),
@@ -523,10 +756,28 @@ class ExportService {
           subject: shareSubject,
         ),
       );
-      return ExportResult.success(file.path, shareReadyMessage);
+      return ExportResult.success(
+        file.path,
+        _buildSavedMessage(
+          baseMessage: successMessage,
+          fileName: fileName,
+          filePath: file.path,
+          useFilesAppLocation: PlatformSupport.isIOS,
+          followUpMessage: shareReadyMessage,
+        ),
+      );
     } catch (_) {
       final file = await _writeMobileBinaryFile(fileName, bytes);
-      return ExportResult.success(file.path, shareFallbackMessage);
+      return ExportResult.success(
+        file.path,
+        _buildSavedMessage(
+          baseMessage: successMessage,
+          fileName: fileName,
+          filePath: file.path,
+          useFilesAppLocation: PlatformSupport.isIOS,
+          followUpMessage: shareFallbackMessage,
+        ),
+      );
     }
   }
 
@@ -536,6 +787,54 @@ class ExportService {
 
   String _formatRaceDateLong(DateTime value) {
     return DateFormat('MMMM d, y').format(value.toLocal());
+  }
+
+  pw.Widget _buildBarcodePacketRow(LabelDocument document) {
+    return pw.Container(
+      width: double.infinity,
+      margin: const pw.EdgeInsets.only(bottom: 10),
+      padding: const pw.EdgeInsets.all(14),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColors.grey500),
+        borderRadius: pw.BorderRadius.circular(12),
+      ),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.center,
+        children: <pw.Widget>[
+          pw.SizedBox(
+            width: 260,
+            child: pw.BarcodeWidget(
+              barcode: pw.Barcode.code128(),
+              data: document.barcodeValue,
+              height: 68,
+              drawText: false,
+            ),
+          ),
+          pw.SizedBox(width: 18),
+          pw.Expanded(
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              mainAxisSize: pw.MainAxisSize.min,
+              children: <pw.Widget>[
+                pw.Text(
+                  document.runnerName,
+                  maxLines: 2,
+                  style: pw.TextStyle(
+                    fontSize: 14,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+                pw.SizedBox(height: 6),
+                pw.Text(
+                  document.barcodeValue,
+                  style: const pw.TextStyle(fontSize: 10),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   String _slugify(String value) {

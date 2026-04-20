@@ -39,13 +39,15 @@ enum PrinterConnectionType {
     PrinterConnectionType.bluetooth =>
       'Enter the Brother QL-820NWB Bluetooth name or MAC address manually. This saves the target for this iPad.',
     PrinterConnectionType.network =>
-      'Use the Brother printer IP address or hostname. The app can check whether the printer is reachable on the current Wi-Fi network.',
+      'Use the Brother printer IP address or hostname, or leave it blank so the iPad can auto-discover the printer on the current Wi-Fi network.',
   };
+
+  bool get allowsAutoDiscovery => this == PrinterConnectionType.network;
 
   static PrinterConnectionType fromStorage(String? value) {
     return PrinterConnectionType.values.firstWhere(
       (type) => type.storageValue == value,
-      orElse: () => PrinterConnectionType.bluetooth,
+      orElse: () => PrinterConnectionType.network,
     );
   }
 }
@@ -73,7 +75,9 @@ class AppSettings {
   final DateTime? lastScannerCheckAt;
   final String? lastScannerCheckValue;
 
-  bool get hasPrinterConfigured => printerHost.trim().isNotEmpty;
+  bool get hasPrinterConfigured =>
+      printerHost.trim().isNotEmpty ||
+      printerConnectionType.allowsAutoDiscovery;
   bool get hasVerifiedScanner => lastScannerCheckAt != null;
 
   factory AppSettings.defaults() {
@@ -82,7 +86,7 @@ class AppSettings {
       dryRunMode: false,
       printerHost: '',
       printerMedia: AppConstants.defaultPrinterMedia,
-      printerConnectionType: PrinterConnectionType.bluetooth,
+      printerConnectionType: PrinterConnectionType.network,
       adminPasscode: '123',
       selectedRaceId: null,
       lastScannerCheckAt: null,

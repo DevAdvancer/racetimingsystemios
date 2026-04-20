@@ -11,7 +11,6 @@ import 'package:race_timer/providers/check_in_provider.dart';
 import 'package:race_timer/providers/race_provider.dart';
 import 'package:race_timer/providers/settings_provider.dart';
 import 'package:race_timer/widgets/admin_access_dialog.dart';
-import 'package:race_timer/widgets/barcode_widget.dart';
 
 class RegistrationScreen extends ConsumerStatefulWidget {
   const RegistrationScreen({super.key});
@@ -54,9 +53,8 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
   @override
   Widget build(BuildContext context) {
     final raceAsync = ref.watch(currentRaceProvider);
-    final theme = Theme.of(context);
     final race = raceAsync.asData?.value;
-    if (race != null && !_didRequestInitialKeyboard) {
+    if (!_didRequestInitialKeyboard) {
       _didRequestInitialKeyboard = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
@@ -66,74 +64,29 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
     }
 
     return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
         child: Stack(
           children: [
             const Positioned.fill(child: _KioskBackdrop()),
             Positioned.fill(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  return SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 28,
-                      vertical: 20,
-                    ),
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        minHeight: constraints.maxHeight,
-                      ),
-                      child: Center(
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 1180),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                'Runner Check-In',
-                                textAlign: TextAlign.center,
-                                style: theme.textTheme.displaySmall?.copyWith(
-                                  fontSize: 56,
-                                  color: theme.colorScheme.onSurface,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                race == null
-                                    ? 'Ask the organizer to unlock setup and choose today\'s race.'
-                                    : race.name,
-                                textAlign: TextAlign.center,
-                                style: theme.textTheme.headlineSmall?.copyWith(
-                                  fontSize: 34,
-                                  color: race == null
-                                      ? theme.colorScheme.onErrorContainer
-                                      : theme.colorScheme.primary,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              const SizedBox(height: 32),
-                              _buildInputCard(context, ref, race),
-                              const SizedBox(height: 24),
-                              AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 220),
-                                child: _feedback == null
-                                    ? const SizedBox(
-                                        key: ValueKey('empty-feedback'),
-                                        height: 116,
-                                      )
-                                    : _FeedbackPanel(
-                                        key: ValueKey(_feedback!.title),
-                                        feedback: _feedback!,
-                                      ),
-                              ),
-                            ],
-                          ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(32, 24, 32, 24),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    return Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 1480),
+                        child: _buildKioskLayout(
+                          context,
+                          ref,
+                          race,
+                          constraints,
                         ),
                       ),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
             ),
             Positioned(
@@ -147,12 +100,16 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
     );
   }
 
-  Widget _buildInputCard(BuildContext context, WidgetRef ref, Race? race) {
+  Widget _buildKioskLayout(
+    BuildContext context,
+    WidgetRef ref,
+    Race? race,
+    BoxConstraints constraints,
+  ) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
     final typedName = _nameController.text.trim();
     final normalizedTypedName = _normalizeLookupValue(typedName);
-    final showSuggestions = race != null && normalizedTypedName.length >= 2;
+    final showSuggestions = race != null && normalizedTypedName.isNotEmpty;
     final checkInStateAsync = showSuggestions
         ? ref.watch(checkInProvider)
         : null;
@@ -170,164 +127,335 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
         showSuggestions &&
         (checkInStateAsync?.isLoading ?? false) &&
         suggestionMatches.isEmpty;
+    final isWideLayout = constraints.maxWidth >= 1080;
+    final panelGap = isWideLayout ? 20.0 : 16.0;
+    final entryPanelHeight = previewMatch == null ? 182.0 : 246.0;
+    final actionPanelHeight = isWideLayout
+        ? (constraints.maxHeight * 0.14).clamp(102.0, 126.0)
+        : 110.0;
+    final keyboardPanelHeight = isWideLayout
+        ? (constraints.maxHeight * 0.4).clamp(280.0, 360.0)
+        : 300.0;
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(36),
-      decoration: BoxDecoration(
-        color: colorScheme.surface.withValues(alpha: 0.96),
-        borderRadius: BorderRadius.circular(36),
-        border: Border.all(color: colorScheme.outlineVariant, width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: colorScheme.shadow.withValues(alpha: 0.28),
-            blurRadius: 30,
-            offset: const Offset(0, 18),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+    final suggestionPanel = _KioskSuggestionPanel(
+      key: ValueKey<String>('suggestions-$normalizedTypedName'),
+      query: typedName,
+      raceReady: race != null,
+      suggestions: suggestionMatches,
+      isLoading: suggestionsAreLoading,
+      selectedMatch: _selectedSuggestedMatch,
+      onSuggestionSelected: _selectSuggestedMatch,
+    );
+    final keyboardPanel = _buildKeyboardPanel(
+      context,
+      isWideLayout: isWideLayout,
+    );
+
+    final feedbackPanel = AnimatedSwitcher(
+      duration: const Duration(milliseconds: 220),
+      child: _feedback == null
+          ? const SizedBox.shrink(key: ValueKey('empty-feedback'))
+          : _FeedbackPanel(
+              key: ValueKey(_feedback!.title),
+              feedback: _feedback!,
+            ),
+    );
+
+    if (!isWideLayout) {
+      return SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildRaceBanner(context, race),
+            SizedBox(height: panelGap),
+            SizedBox(
+              height: entryPanelHeight,
+              child: _buildNameEntryPanel(context, theme, previewMatch),
+            ),
+            SizedBox(height: panelGap),
+            SizedBox(
+              height: actionPanelHeight,
+              child: _buildPrintActionButton(context, race, previewMatch),
+            ),
+            SizedBox(height: panelGap),
+            SizedBox(height: 320, child: suggestionPanel),
+            SizedBox(height: panelGap),
+            SizedBox(height: keyboardPanelHeight, child: keyboardPanel),
+            if (_feedback != null) ...[
+              const SizedBox(height: 18),
+              feedbackPanel,
+            ],
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildRaceBanner(context, race),
+        SizedBox(height: panelGap),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  color: colorScheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: colorScheme.outlineVariant),
-                ),
-                child: Text(
-                  'Barcode Print Kiosk',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    color: colorScheme.onPrimaryContainer,
-                    fontWeight: FontWeight.w700,
-                  ),
+              Expanded(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      flex: 11,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(
+                            child: _buildNameEntryPanel(
+                              context,
+                              theme,
+                              previewMatch,
+                            ),
+                          ),
+                          SizedBox(height: panelGap),
+                          SizedBox(
+                            height: actionPanelHeight,
+                            child: _buildPrintActionButton(
+                              context,
+                              race,
+                              previewMatch,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(width: panelGap),
+                    Expanded(flex: 12, child: suggestionPanel),
+                  ],
                 ),
               ),
+              if (_feedback != null) ...[
+                SizedBox(height: panelGap),
+                feedbackPanel,
+              ],
+              SizedBox(height: panelGap),
+              SizedBox(height: keyboardPanelHeight, child: keyboardPanel),
             ],
           ),
-          const SizedBox(height: 22),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildKeyboardPanel(
+    BuildContext context, {
+    required bool isWideLayout,
+  }) {
+    return _KioskPanelShell(
+      padding: EdgeInsets.fromLTRB(
+        isWideLayout ? 24 : 18,
+        isWideLayout ? 20 : 16,
+        isWideLayout ? 24 : 18,
+        isWideLayout ? 20 : 16,
+      ),
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1120),
+          child: _KioskLetterPad(
+            largeLayout: isWideLayout,
+            enabled: !_isSubmitting,
+            onLetterPressed: _insertKeyboardLetter,
+            onPunctuationPressed: _appendKeyboardCharacter,
+            onSpacePressed: _appendKeyboardSpace,
+            onBackspacePressed: _removeLastCharacter,
+            onClearPressed: _clearTypedName,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRaceBanner(BuildContext context, Race? race) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return _KioskPanelShell(
+      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+      borderRadius: 18,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
           Text(
-            'Type your name',
+            'Runner Check-In',
             textAlign: TextAlign.center,
-            style: theme.textTheme.headlineMedium?.copyWith(
-              fontSize: 40,
-              color: colorScheme.onSurface,
-              fontWeight: FontWeight.w800,
+            style: theme.textTheme.labelLarge?.copyWith(
+              fontSize: 18,
+              letterSpacing: 1.1,
+              color: colorScheme.primary,
+              fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 6),
           Text(
-            'Type the first 2 letters to see matching names. Tap your name to preview the barcode before printing.',
+            race?.name ?? 'No race selected',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
-            style: theme.textTheme.bodyLarge?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 24),
-          TextField(
-            controller: _nameController,
-            focusNode: _nameFocusNode,
-            enabled: !_isSubmitting && race != null,
-            textInputAction: TextInputAction.done,
-            textCapitalization: TextCapitalization.words,
-            enableSuggestions: false,
-            autocorrect: false,
             style: theme.textTheme.displaySmall?.copyWith(
-              fontSize: 46,
+              fontSize: 34,
               color: colorScheme.onSurface,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w700,
             ),
-            onTap: _focusNameField,
-            onSubmitted: (_) => _handlePrint(),
-            decoration: InputDecoration(
-              hintText: 'First and last name',
-              hintStyle: theme.textTheme.headlineSmall?.copyWith(
-                fontSize: 30,
+          ),
+          if (race == null) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Ask the organizer to unlock setup and choose today\'s race.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
                 color: colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.w500,
-              ),
-              filled: true,
-              fillColor: colorScheme.primaryContainer,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 28,
-                vertical: 30,
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(28),
-                borderSide: BorderSide(color: colorScheme.outline, width: 2),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(28),
-                borderSide: BorderSide(color: colorScheme.primary, width: 3),
+                fontWeight: FontWeight.w600,
               ),
             ),
-          ),
-          const SizedBox(height: 18),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 220),
-            child: _KioskSuggestionPanel(
-              key: ValueKey<String>('suggestions-$normalizedTypedName'),
-              query: typedName,
-              suggestions: suggestionMatches,
-              isLoading: suggestionsAreLoading,
-              selectedMatch: _selectedSuggestedMatch,
-              onSuggestionSelected: _selectSuggestedMatch,
-            ),
-          ),
-          const SizedBox(height: 18),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 220),
-            child: _BarcodePreviewPanel(
-              key: ValueKey<String>(
-                previewMatch?.entry.barcodeValue ??
-                    'preview-$normalizedTypedName',
-              ),
-              query: typedName,
-              previewMatch: previewMatch,
-              isLoading: suggestionsAreLoading,
-            ),
-          ),
-          const SizedBox(height: 18),
-          Text(
-            'If we do not find your name, you can add yourself and print a barcode right here.',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.titleMedium?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 22),
-          SizedBox(
-            height: 108,
-            child: FilledButton(
-              onPressed: _isSubmitting || race == null ? null : _handlePrint,
-              style: FilledButton.styleFrom(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(28),
-                ),
-                textStyle: theme.textTheme.headlineMedium?.copyWith(
-                  fontSize: 34,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              child: _isSubmitting
-                  ? const SizedBox(
-                      width: 36,
-                      height: 36,
-                      child: CircularProgressIndicator(strokeWidth: 3),
-                    )
-                  : const Text('Print Barcode'),
-            ),
-          ),
+          ],
         ],
       ),
+    );
+  }
+
+  Widget _buildNameEntryPanel(
+    BuildContext context,
+    ThemeData theme,
+    CheckInMatch? previewMatch,
+  ) {
+    return _KioskPanelShell(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxHeight < 150;
+
+          return SingleChildScrollView(
+            padding: EdgeInsets.all(compact ? 14 : 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextField(
+                  controller: _nameController,
+                  focusNode: _nameFocusNode,
+                  enabled: !_isSubmitting,
+                  readOnly: true,
+                  autofocus: true,
+                  textInputAction: TextInputAction.done,
+                  textCapitalization: TextCapitalization.words,
+                  enableSuggestions: false,
+                  autocorrect: false,
+                  style: theme.textTheme.displaySmall?.copyWith(
+                    fontSize: compact ? 26 : 30,
+                    fontWeight: FontWeight.w800,
+                  ),
+                  onTap: _focusNameField,
+                  onSubmitted: (_) => _handlePrint(),
+                  decoration: InputDecoration(
+                    hintText: 'First name / last name',
+                    helperText:
+                        'Use the keyboard below to type. Matching names appear in the list.',
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: compact ? 18 : 22,
+                    ),
+                  ),
+                ),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 220),
+                  child: previewMatch == null
+                      ? const SizedBox(
+                          key: ValueKey('name-entry-spacer'),
+                          height: 0,
+                        )
+                      : Padding(
+                          padding: const EdgeInsets.only(top: 14),
+                          child: _SelectedRunnerPreview(
+                            key: ValueKey(previewMatch.entry.barcodeValue),
+                            match: previewMatch,
+                          ),
+                        ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildPrintActionButton(
+    BuildContext context,
+    Race? race,
+    CheckInMatch? previewMatch,
+  ) {
+    final theme = Theme.of(context);
+
+    return FilledButton(
+      onPressed: _isSubmitting ? null : _handlePrint,
+      style: FilledButton.styleFrom(
+        backgroundColor: theme.colorScheme.primary,
+        disabledBackgroundColor: theme.colorScheme.primary.withValues(
+          alpha: 0.35,
+        ),
+        foregroundColor: theme.colorScheme.onPrimary,
+        padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        textStyle: theme.textTheme.headlineSmall?.copyWith(
+          fontSize: 24,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      child: _isSubmitting
+          ? const SizedBox(
+              width: 34,
+              height: 34,
+              child: CircularProgressIndicator(strokeWidth: 3),
+            )
+          : LayoutBuilder(
+              builder: (context, constraints) {
+                final compact = constraints.maxHeight < 90;
+
+                return Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Flexible(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          'Print Barcode',
+                          style: theme.textTheme.headlineSmall?.copyWith(
+                            fontSize: compact ? 21 : 24,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (!compact) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        previewMatch == null
+                            ? race == null
+                                  ? 'Select a race in organizer setup, then print.'
+                                  : 'Select a matching runner, then print.'
+                            : 'Selected: ${previewMatch.runner.name}',
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          color: theme.colorScheme.onPrimary.withValues(
+                            alpha: 0.92,
+                          ),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ],
+                );
+              },
+            ),
     );
   }
 
@@ -362,7 +490,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
     List<CheckInMatch> roster,
   ) {
     final normalizedQuery = _normalizeLookupValue(typedName);
-    if (normalizedQuery.length < 2) {
+    if (normalizedQuery.isEmpty) {
       return const <CheckInMatch>[];
     }
 
@@ -381,7 +509,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
       return left.runner.name.compareTo(right.runner.name);
     });
 
-    return filtered.take(6).toList(growable: false);
+    return filtered.take(24).toList(growable: false);
   }
 
   int _suggestionRank(String candidateName, String normalizedQuery) {
@@ -427,6 +555,56 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
 
   String _normalizeLookupValue(String value) {
     return value.toLowerCase().replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
+  void _insertKeyboardLetter(String letter) {
+    final currentValue = _nameController.text;
+    final shouldUppercase =
+        currentValue.isEmpty ||
+        currentValue.endsWith(' ') ||
+        currentValue.endsWith('-') ||
+        currentValue.endsWith('\'');
+    _appendKeyboardCharacter(
+      shouldUppercase ? letter.toUpperCase() : letter.toLowerCase(),
+    );
+  }
+
+  void _appendKeyboardCharacter(String character) {
+    final updatedValue = '${_nameController.text}$character';
+    _nameController.value = TextEditingValue(
+      text: updatedValue,
+      selection: TextSelection.collapsed(offset: updatedValue.length),
+    );
+    _focusNameField();
+  }
+
+  void _appendKeyboardSpace() {
+    final currentValue = _nameController.text;
+    if (currentValue.isEmpty || currentValue.endsWith(' ')) {
+      return;
+    }
+    _appendKeyboardCharacter(' ');
+  }
+
+  void _removeLastCharacter() {
+    final currentValue = _nameController.text;
+    if (currentValue.isEmpty) {
+      return;
+    }
+    final updatedValue = currentValue.substring(0, currentValue.length - 1);
+    _nameController.value = TextEditingValue(
+      text: updatedValue,
+      selection: TextSelection.collapsed(offset: updatedValue.length),
+    );
+    _focusNameField();
+  }
+
+  void _clearTypedName() {
+    if (_nameController.text.isEmpty) {
+      return;
+    }
+    _nameController.clear();
+    _focusNameField();
   }
 
   Future<void> _handlePrint() async {
@@ -638,12 +816,6 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
       return;
     }
     _nameFocusNode.requestFocus();
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted) {
-        return;
-      }
-      await SystemChannels.textInput.invokeMethod<void>('TextInput.show');
-    });
   }
 
   Future<void> _hideSoftKeyboard() async {
@@ -691,46 +863,47 @@ class _FeedbackPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     final palette = switch (feedback.tone) {
       _KioskFeedbackTone.success => (
-        background: const Color(0xFF142920),
-        border: const Color(0xFF2F7B57),
-        text: const Color(0xFF9CF4C7),
-        icon: Icons.check_circle,
+        background: colorScheme.secondaryContainer,
+        border: colorScheme.secondary.withValues(alpha: 0.42),
+        text: colorScheme.onSecondaryContainer,
+        icon: Icons.check_circle_outline,
       ),
       _KioskFeedbackTone.warning => (
-        background: const Color(0xFF392916),
-        border: const Color(0xFFE39B42),
-        text: const Color(0xFFFFD59D),
-        icon: Icons.info,
+        background: colorScheme.tertiaryContainer,
+        border: colorScheme.tertiary.withValues(alpha: 0.46),
+        text: colorScheme.onTertiaryContainer,
+        icon: Icons.warning_amber_rounded,
       ),
       _KioskFeedbackTone.error => (
-        background: const Color(0xFF40171D),
-        border: const Color(0xFFFF6B6B),
-        text: const Color(0xFFFFD9DE),
-        icon: Icons.error,
+        background: colorScheme.errorContainer,
+        border: colorScheme.error.withValues(alpha: 0.55),
+        text: colorScheme.onErrorContainer,
+        icon: Icons.error_outline,
       ),
       _KioskFeedbackTone.info => (
-        background: const Color(0xFF173043),
-        border: const Color(0xFF4FA3FF),
-        text: const Color(0xFFE7F5FF),
+        background: colorScheme.primaryContainer,
+        border: colorScheme.primary.withValues(alpha: 0.4),
+        text: colorScheme.onPrimaryContainer,
         icon: Icons.info_outline,
       ),
     };
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
       decoration: BoxDecoration(
         color: palette.background,
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: palette.border, width: 2),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: palette.border, width: 1.5),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(palette.icon, color: palette.text, size: 34),
-          const SizedBox(width: 14),
+          Icon(palette.icon, color: palette.text, size: 30),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -738,7 +911,7 @@ class _FeedbackPanel extends StatelessWidget {
                 Text(
                   feedback.title,
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontSize: 30,
+                    fontSize: 24,
                     color: palette.text,
                     fontWeight: FontWeight.w700,
                   ),
@@ -753,9 +926,13 @@ class _FeedbackPanel extends StatelessWidget {
                 ),
                 if (feedback.actionLabel != null &&
                     feedback.onAction != null) ...[
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 12),
                   FilledButton(
                     onPressed: feedback.onAction,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: palette.border,
+                      foregroundColor: palette.text,
+                    ),
                     child: Text(feedback.actionLabel!),
                   ),
                 ],
@@ -768,10 +945,11 @@ class _FeedbackPanel extends StatelessWidget {
   }
 }
 
-class _KioskSuggestionPanel extends StatelessWidget {
+class _KioskSuggestionPanel extends StatefulWidget {
   const _KioskSuggestionPanel({
     super.key,
     required this.query,
+    required this.raceReady,
     required this.suggestions,
     required this.isLoading,
     required this.selectedMatch,
@@ -779,158 +957,169 @@ class _KioskSuggestionPanel extends StatelessWidget {
   });
 
   final String query;
+  final bool raceReady;
   final List<CheckInMatch> suggestions;
   final bool isLoading;
   final CheckInMatch? selectedMatch;
   final ValueChanged<CheckInMatch> onSuggestionSelected;
 
   @override
+  State<_KioskSuggestionPanel> createState() => _KioskSuggestionPanelState();
+}
+
+class _KioskSuggestionPanelState extends State<_KioskSuggestionPanel> {
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final trimmedQuery = query.trim();
+    final trimmedQuery = widget.query.trim();
+    final showScrollHint = widget.suggestions.length > 5;
 
-    if (trimmedQuery.length < 2) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
-        decoration: BoxDecoration(
-          color: colorScheme.surfaceContainerHigh,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: colorScheme.outlineVariant),
-        ),
-        child: Text(
-          'Type at least 2 letters to see matching runner names.',
-          textAlign: TextAlign.center,
-          style: theme.textTheme.titleMedium?.copyWith(
-            color: colorScheme.onSurfaceVariant,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      );
-    }
-
-    if (isLoading) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
-        decoration: BoxDecoration(
-          color: colorScheme.surfaceContainerHigh,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: colorScheme.outlineVariant),
-        ),
-        child: Column(
-          children: [
-            const LinearProgressIndicator(minHeight: 6),
-            const SizedBox(height: 14),
-            Text(
-              'Loading matching runner names.',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.titleMedium?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (suggestions.isEmpty) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
-        decoration: BoxDecoration(
-          color: colorScheme.errorContainer,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: colorScheme.error.withValues(alpha: 0.35)),
-        ),
-        child: Text(
-          'No saved runner names match those letters yet.',
-          textAlign: TextAlign.center,
-          style: theme.textTheme.titleMedium?.copyWith(
-            color: colorScheme.onErrorContainer,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      );
-    }
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: colorScheme.outlineVariant),
-      ),
+    return _KioskPanelShell(
+      padding: const EdgeInsets.fromLTRB(28, 24, 28, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'Tap your name from the list',
+            widget.suggestions.isNotEmpty
+                ? 'Tap your name from the list'
+                : 'Matching runners',
             textAlign: TextAlign.center,
             style: theme.textTheme.titleLarge?.copyWith(
               color: colorScheme.onSurface,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 14),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 260),
-            child: ListView.separated(
-              shrinkWrap: true,
-              itemCount: suggestions.length,
-              itemBuilder: (context, index) {
-                final match = suggestions[index];
-                final isSelected =
-                    selectedMatch?.entry.id == match.entry.id &&
-                    selectedMatch?.runner.id == match.runner.id;
-                return OutlinedButton(
-                  onPressed: () => onSuggestionSelected(match),
-                  style: OutlinedButton.styleFrom(
-                    alignment: Alignment.centerLeft,
-                    backgroundColor: isSelected
-                        ? colorScheme.primaryContainer
-                        : colorScheme.surface,
-                    side: BorderSide(
-                      color: isSelected
-                          ? colorScheme.primary
-                          : colorScheme.outlineVariant,
-                      width: isSelected ? 2 : 1.5,
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 18,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(22),
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+          AnimatedOpacity(
+            duration: const Duration(milliseconds: 180),
+            opacity: showScrollHint ? 1 : 0,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                'Scroll to see more matching names',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: Builder(
+              builder: (context) {
+                if (!widget.raceReady) {
+                  return const _CenteredRosterMessage(
+                    message:
+                        'Select today\'s race in organizer setup to load the runner roster.',
+                  );
+                }
+
+                if (trimmedQuery.isEmpty) {
+                  return _CenteredRosterMessage(
+                    message:
+                        'Tap at least 1 letter to show matching runner names from the roster.',
+                  );
+                }
+
+                if (widget.isLoading) {
+                  return Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text(
-                        match.runner.name,
-                        style: theme.textTheme.headlineSmall?.copyWith(
-                          fontSize: 28,
-                          color: colorScheme.onSurface,
-                          fontWeight: FontWeight.w800,
-                        ),
+                      LinearProgressIndicator(
+                        minHeight: 6,
+                        color: colorScheme.primary,
+                        backgroundColor: colorScheme.primaryContainer,
                       ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 16),
                       Text(
-                        match.entry.barcodeValue,
+                        'Loading matching runner names.',
+                        textAlign: TextAlign.center,
                         style: theme.textTheme.titleMedium?.copyWith(
                           color: colorScheme.onSurfaceVariant,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ],
+                  );
+                }
+
+                if (widget.suggestions.isEmpty) {
+                  return const _CenteredRosterMessage(
+                    message: 'No saved runner names match those letters yet.',
+                  );
+                }
+
+                return Scrollbar(
+                  controller: _scrollController,
+                  thumbVisibility: showScrollHint,
+                  trackVisibility: showScrollHint,
+                  child: ListView.separated(
+                    controller: _scrollController,
+                    itemCount: widget.suggestions.length,
+                    itemBuilder: (context, index) {
+                      final match = widget.suggestions[index];
+                      final isSelected =
+                          widget.selectedMatch?.entry.id == match.entry.id &&
+                          widget.selectedMatch?.runner.id == match.runner.id;
+                      return OutlinedButton(
+                        onPressed: () => widget.onSuggestionSelected(match),
+                        style: OutlinedButton.styleFrom(
+                          alignment: Alignment.centerLeft,
+                          backgroundColor: isSelected
+                              ? colorScheme.primaryContainer
+                              : colorScheme.surface,
+                          side: BorderSide(
+                            color: isSelected
+                                ? colorScheme.primary
+                                : colorScheme.outlineVariant,
+                            width: isSelected ? 2 : 1.2,
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 18,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(22),
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              match.runner.name,
+                              style: theme.textTheme.headlineSmall?.copyWith(
+                                fontSize: 26,
+                                color: colorScheme.onSurface,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              match.entry.barcodeValue,
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                color: colorScheme.onSurfaceVariant,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                    separatorBuilder: (context, index) =>
+                        const SizedBox(height: 10),
                   ),
                 );
               },
-              separatorBuilder: (context, index) => const SizedBox(height: 10),
             ),
           ),
         ],
@@ -939,90 +1128,255 @@ class _KioskSuggestionPanel extends StatelessWidget {
   }
 }
 
-class _BarcodePreviewPanel extends StatelessWidget {
-  const _BarcodePreviewPanel({
-    super.key,
-    required this.query,
-    required this.previewMatch,
-    required this.isLoading,
+class _KioskLetterPad extends StatelessWidget {
+  const _KioskLetterPad({
+    required this.largeLayout,
+    required this.enabled,
+    required this.onLetterPressed,
+    required this.onPunctuationPressed,
+    required this.onSpacePressed,
+    required this.onBackspacePressed,
+    required this.onClearPressed,
   });
 
-  final String query;
-  final CheckInMatch? previewMatch;
-  final bool isLoading;
+  static const List<String> _letters = <String>[
+    'A',
+    'B',
+    'C',
+    'D',
+    'E',
+    'F',
+    'G',
+    'H',
+    'I',
+    'J',
+    'K',
+    'L',
+    'M',
+    'N',
+    'O',
+    'P',
+    'Q',
+    'R',
+    'S',
+    'T',
+    'U',
+    'V',
+    'W',
+    'X',
+    'Y',
+    'Z',
+  ];
+
+  final bool largeLayout;
+  final bool enabled;
+  final ValueChanged<String> onLetterPressed;
+  final ValueChanged<String> onPunctuationPressed;
+  final VoidCallback onSpacePressed;
+  final VoidCallback onBackspacePressed;
+  final VoidCallback onClearPressed;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final trimmedQuery = query.trim();
+    final keyWidth = largeLayout ? 72.0 : 64.0;
+    final keyHeight = largeLayout ? 60.0 : 54.0;
+    final spacing = largeLayout ? 12.0 : 10.0;
+    final titleSpacing = largeLayout ? 16.0 : 12.0;
+    final labelStyle = theme.textTheme.titleLarge?.copyWith(
+      fontSize: largeLayout ? 22 : 18,
+      fontWeight: FontWeight.w700,
+      color: colorScheme.onSurface,
+    );
 
-    if (previewMatch != null) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(22),
-        decoration: BoxDecoration(
-          color: colorScheme.secondaryContainer,
-          borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: colorScheme.outlineVariant, width: 1.5),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Text('Kiosk keyboard', textAlign: TextAlign.center, style: labelStyle),
+        SizedBox(height: titleSpacing),
+        Wrap(
+          alignment: WrapAlignment.center,
+          spacing: spacing,
+          runSpacing: spacing,
           children: [
-            Text(
-              'Barcode preview for ${previewMatch!.runner.name}',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.titleLarge?.copyWith(
-                color: colorScheme.onSecondaryContainer,
-                fontWeight: FontWeight.w800,
+            for (final letter in _letters)
+              _KioskKeyboardKey(
+                label: letter,
+                width: keyWidth,
+                height: keyHeight,
+                onPressed: enabled ? () => onLetterPressed(letter) : null,
               ),
+            _KioskKeyboardKey(
+              label: '\'',
+              width: keyWidth,
+              height: keyHeight,
+              onPressed: enabled ? () => onPunctuationPressed('\'') : null,
             ),
-            const SizedBox(height: 12),
-            RunnerBarcodePreview(
-              data: previewMatch!.entry.barcodeValue,
-              runnerName: previewMatch!.runner.name,
-              height: 78,
-              padding: const EdgeInsets.all(16),
-              borderRadius: 22,
+            _KioskKeyboardKey(
+              label: '-',
+              width: keyWidth,
+              height: keyHeight,
+              onPressed: enabled ? () => onPunctuationPressed('-') : null,
             ),
-            const SizedBox(height: 10),
-            Text(
-              'This saved barcode will be printed when you tap Print Barcode.',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.titleMedium?.copyWith(
-                color: colorScheme.onSecondaryContainer,
-                fontWeight: FontWeight.w700,
-              ),
+            _KioskKeyboardKey(
+              label: 'Space',
+              width: largeLayout ? 180 : 152,
+              height: keyHeight,
+              onPressed: enabled ? onSpacePressed : null,
+            ),
+            _KioskKeyboardKey(
+              label: 'Backspace',
+              width: largeLayout ? 196 : 170,
+              height: keyHeight,
+              onPressed: enabled ? onBackspacePressed : null,
+            ),
+            _KioskKeyboardKey(
+              label: 'Clear',
+              width: largeLayout ? 140 : 118,
+              height: keyHeight,
+              onPressed: enabled ? onClearPressed : null,
             ),
           ],
         ),
-      );
-    }
+      ],
+    );
+  }
+}
 
-    final message = switch ((trimmedQuery.length >= 2, isLoading)) {
-      (true, true) => 'Looking up the saved barcode for this runner.',
-      (true, false) =>
-        'Select a matching name to preview the saved barcode before printing.',
-      _ =>
-        'The saved barcode preview will appear here after you type 2 letters.',
-    };
+class _KioskKeyboardKey extends StatelessWidget {
+  const _KioskKeyboardKey({
+    required this.label,
+    required this.onPressed,
+    this.width = 56,
+    this.height = 46,
+  });
+
+  final String label;
+  final VoidCallback? onPressed;
+  final double width;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: width,
+      height: height,
+      child: FilledButton.tonal(
+        onPressed: onPressed,
+        style: FilledButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          textStyle: Theme.of(context).textTheme.titleMedium?.copyWith(
+            fontSize: height >= 60 ? 22 : 18,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        child: FittedBox(fit: BoxFit.scaleDown, child: Text(label)),
+      ),
+    );
+  }
+}
+
+class _SelectedRunnerPreview extends StatelessWidget {
+  const _SelectedRunnerPreview({super.key, required this.match});
+
+  final CheckInMatch match;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: colorScheme.outlineVariant),
-      ),
-      child: Text(
-        message,
-        textAlign: TextAlign.center,
-        style: theme.textTheme.titleMedium?.copyWith(
-          color: colorScheme.onSurfaceVariant,
-          fontWeight: FontWeight.w600,
+        color: colorScheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: colorScheme.secondary.withValues(alpha: 0.42),
+          width: 1.2,
         ),
       ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Barcode preview for ${match.runner.name}',
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: colorScheme.onSecondaryContainer,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            match.entry.barcodeValue,
+            style: theme.textTheme.bodyLarge?.copyWith(
+              color: colorScheme.onSecondaryContainer,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CenteredRosterMessage extends StatelessWidget {
+  const _CenteredRosterMessage({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 18),
+        child: Text(
+          message,
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _KioskPanelShell extends StatelessWidget {
+  const _KioskPanelShell({
+    required this.child,
+    this.padding = EdgeInsets.zero,
+    this.borderRadius = 34,
+  });
+
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+  final double borderRadius;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      width: double.infinity,
+      padding: padding,
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(borderRadius),
+        border: Border.all(color: colorScheme.outlineVariant, width: 1.4),
+        boxShadow: [
+          BoxShadow(
+            color: colorScheme.shadow.withValues(alpha: 0.08),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: child,
     );
   }
 }
@@ -1050,47 +1404,19 @@ class _KioskBackdrop extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: <Color>[
-            Theme.of(context).colorScheme.primaryContainer,
-            Theme.of(context).colorScheme.tertiaryContainer,
+            colorScheme.primaryContainer.withValues(alpha: 0.36),
+            colorScheme.tertiaryContainer.withValues(alpha: 0.26),
             Theme.of(context).scaffoldBackgroundColor,
           ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
         ),
-      ),
-      child: Stack(
-        children: [
-          Positioned(
-            top: -80,
-            left: -40,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Theme.of(
-                  context,
-                ).colorScheme.primary.withValues(alpha: 0.12),
-              ),
-              child: const SizedBox(width: 260, height: 260),
-            ),
-          ),
-          Positioned(
-            right: -40,
-            bottom: -60,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Theme.of(
-                  context,
-                ).colorScheme.secondary.withValues(alpha: 0.12),
-              ),
-              child: const SizedBox(width: 320, height: 320),
-            ),
-          ),
-        ],
       ),
     );
   }

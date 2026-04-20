@@ -5,9 +5,7 @@ import 'package:race_timer/core/router.dart';
 import 'package:race_timer/providers/race_provider.dart';
 
 void main() {
-  testWidgets('app launches on the start screen instead of the kiosk', (
-    tester,
-  ) async {
+  testWidgets('app launches on the choose race page', (tester) async {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -23,8 +21,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Print Barcode'), findsOneWidget);
-    expect(find.text('Organizer Dashboard'), findsOneWidget);
+    expect(find.text('Choose Race'), findsAtLeastNWidgets(1));
+    expect(find.text('Create Race'), findsAtLeastNWidgets(1));
+    expect(find.text('Print Barcode'), findsNothing);
     expect(find.text('Runner Check-In'), findsNothing);
   });
 }

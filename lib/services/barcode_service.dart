@@ -24,6 +24,8 @@ class LabelDocument {
       'barcodeValue': barcodeValue,
       'raceId': raceId,
       'raceName': raceName,
+      'host': printerHost,
+      'media': printerMedia,
       'printerHost': printerHost,
       'printerMedia': printerMedia,
     };

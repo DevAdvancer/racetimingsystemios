@@ -194,6 +194,9 @@ class RaceDashboardScreen extends ConsumerWidget {
                   onAddRunner: race == null
                       ? null
                       : () => _addRunner(context, ref, race),
+                  onDownloadQrPacketPdf: race == null
+                      ? null
+                      : () => _downloadQrPacketPdf(context, ref, race),
                 ),
                 loading: () => const LinearProgressIndicator(),
                 error: (error, stackTrace) => StatusBanner(
@@ -535,6 +538,43 @@ class RaceDashboardScreen extends ConsumerWidget {
     );
   }
 
+  Future<void> _downloadQrPacketPdf(
+    BuildContext context,
+    WidgetRef ref,
+    Race race,
+  ) async {
+    final roster = await ref.read(raceServiceProvider).listCheckInRoster(race);
+    if (!context.mounted) {
+      return;
+    }
+    if (roster.isEmpty) {
+      await showUserMessageDialog(
+        context,
+        title: 'Nothing to export',
+        message:
+            'Import runners or add a runner to ${race.name} before downloading the barcode packet.',
+        tone: UserDialogTone.warning,
+      );
+      return;
+    }
+
+    final result = await ref
+        .read(exportServiceProvider)
+        .exportQrPacketPdf(race: race, matches: roster);
+    if (!context.mounted) {
+      return;
+    }
+
+    await showUserMessageDialog(
+      context,
+      title: result.succeeded
+          ? 'Barcode packet ready'
+          : 'Barcode packet failed',
+      message: result.message,
+      tone: result.succeeded ? UserDialogTone.success : UserDialogTone.error,
+    );
+  }
+
   Future<void> _editRosterEntry(
     BuildContext context,
     WidgetRef ref,
@@ -723,11 +763,13 @@ class _RaceRosterToolsCard extends StatelessWidget {
     required this.race,
     required this.onImportRunners,
     required this.onAddRunner,
+    required this.onDownloadQrPacketPdf,
   });
 
   final Race? race;
   final VoidCallback? onImportRunners;
   final VoidCallback? onAddRunner;
+  final VoidCallback? onDownloadQrPacketPdf;
 
   @override
   Widget build(BuildContext context) {
@@ -773,11 +815,21 @@ class _RaceRosterToolsCard extends StatelessWidget {
                   icon: const Icon(Icons.person_add_alt_1),
                   label: const Text('Add New Runner'),
                 ),
+                OutlinedButton.icon(
+                  onPressed: onDownloadQrPacketPdf,
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(240, 64),
+                    textStyle: Theme.of(context).textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  icon: const Icon(Icons.picture_as_pdf_outlined),
+                  label: const Text('Download Barcode Packet'),
+                ),
               ],
             ),
             const SizedBox(height: 14),
             Text(
-              'Use the import for the Excel or CSV roster. The optional Distance column can auto-assign full or alternate distances. Use Add New Runner for walk-ups or anyone missing from the spreadsheet.',
+              'Use the import for the Excel or CSV roster. The optional Distance column can auto-assign full or alternate distances. Use Add New Runner for walk-ups or anyone missing from the spreadsheet. Download Barcode Packet creates a printable PDF with the START RACE barcode and one barcode row for every runner in this race.',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
           ],
@@ -910,7 +962,7 @@ class _RacePointsCard extends ConsumerWidget {
   }
 }
 
-class _RaceDatabaseCard extends ConsumerWidget {
+class _RaceDatabaseCard extends ConsumerStatefulWidget {
   const _RaceDatabaseCard({
     required this.race,
     required this.onDownloadResultsPdf,
@@ -922,11 +974,25 @@ class _RaceDatabaseCard extends ConsumerWidget {
   final Future<void> Function(RaceResultRow row)? onEditRow;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final rowsAsync = race == null
+  ConsumerState<_RaceDatabaseCard> createState() => _RaceDatabaseCardState();
+}
+
+class _RaceDatabaseCardState extends ConsumerState<_RaceDatabaseCard> {
+  final ScrollController _horizontalScrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _horizontalScrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final rowsAsync = widget.race == null
         ? const AsyncValue<List<RaceResultRow>>.data(<RaceResultRow>[])
-        : ref.watch(raceResultsProvider(race!.id));
+        : ref.watch(raceResultsProvider(widget.race!.id));
     final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
     return Card(
       child: Padding(
@@ -942,9 +1008,9 @@ class _RaceDatabaseCard extends ConsumerWidget {
             ),
             const SizedBox(height: 10),
             Text(
-              race == null
+              widget.race == null
                   ? 'Choose a race first. This section lets organizers edit the runner data that was imported or added on the spot.'
-                  : 'Review and edit the saved roster for ${race!.name}. Barcode, Bib No., city, age, gender, distance, elapsed time, pace, and payment status can all be corrected here with large readable controls.',
+                  : 'Review and edit the saved roster for ${widget.race!.name}. Started runners show their start scan, ended runners show their finish or global-stop time, and every row can be edited directly from this spreadsheet view.',
               style: theme.textTheme.bodyLarge?.copyWith(fontSize: 18),
             ),
             const SizedBox(height: 18),
@@ -953,7 +1019,7 @@ class _RaceDatabaseCard extends ConsumerWidget {
               runSpacing: 14,
               children: [
                 OutlinedButton.icon(
-                  onPressed: onDownloadResultsPdf,
+                  onPressed: widget.onDownloadResultsPdf,
                   style: OutlinedButton.styleFrom(
                     minimumSize: const Size(240, 64),
                     textStyle: theme.textTheme.titleMedium?.copyWith(
@@ -964,6 +1030,22 @@ class _RaceDatabaseCard extends ConsumerWidget {
                   label: const Text('Download Results PDF'),
                 ),
               ],
+            ),
+            const SizedBox(height: 18),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: colorScheme.primaryContainer.withValues(alpha: 0.45),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: colorScheme.outlineVariant),
+              ),
+              child: Text(
+                'Spreadsheet view: scroll sideways for all columns, then tap Edit on any row to update the saved database entry.',
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
             const SizedBox(height: 18),
             rowsAsync.when(
@@ -983,129 +1065,137 @@ class _RaceDatabaseCard extends ConsumerWidget {
                   );
                 }
 
-                return ListView.separated(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: sortedRows.length,
-                  separatorBuilder: (context, index) =>
-                      const SizedBox(height: 12),
-                  itemBuilder: (context, index) {
-                    final row = sortedRows[index];
-                    return Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.surfaceContainerHighest
-                            .withValues(alpha: 0.4),
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(
-                          color: theme.colorScheme.outlineVariant,
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
+                return Container(
+                  decoration: BoxDecoration(
+                    color: colorScheme.surfaceContainerLowest,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: colorScheme.outlineVariant),
+                  ),
+                  child: Scrollbar(
+                    controller: _horizontalScrollController,
+                    thumbVisibility: true,
+                    trackVisibility: true,
+                    child: SingleChildScrollView(
+                      controller: _horizontalScrollController,
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.all(16),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(minWidth: 1700),
+                        child: DataTable(
+                          headingRowHeight: 64,
+                          dataRowMinHeight: 76,
+                          dataRowMaxHeight: 92,
+                          horizontalMargin: 14,
+                          columnSpacing: 20,
+                          dividerThickness: 1,
+                          headingTextStyle: theme.textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w800),
+                          dataTextStyle: theme.textTheme.bodyLarge?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                          columns: const [
+                            DataColumn(label: Text('Runner')),
+                            DataColumn(label: Text('Barcode')),
+                            DataColumn(label: Text('Bib No.')),
+                            DataColumn(label: Text('City')),
+                            DataColumn(label: Text('Age')),
+                            DataColumn(label: Text('Gender')),
+                            DataColumn(label: Text('Distance')),
+                            DataColumn(label: Text('Started')),
+                            DataColumn(label: Text('Ended')),
+                            DataColumn(label: Text('Time')),
+                            DataColumn(label: Text('Pace')),
+                            DataColumn(label: Text('Payment')),
+                            DataColumn(label: Text('Status')),
+                            DataColumn(label: Text('Action')),
+                          ],
+                          rows: List<DataRow>.generate(sortedRows.length, (
+                            index,
+                          ) {
+                            final row = sortedRows[index];
+                            final stripeColor = index.isEven
+                                ? colorScheme.surface
+                                : colorScheme.surfaceContainerHighest
+                                      .withValues(alpha: 0.28);
+
+                            return DataRow(
+                              color: WidgetStatePropertyAll<Color?>(
+                                stripeColor,
+                              ),
+                              cells: [
+                                DataCell(
+                                  SizedBox(
+                                    width: 220,
+                                    child: Text(
                                       row.runnerName,
-                                      style: theme.textTheme.headlineSmall
+                                      style: theme.textTheme.titleMedium
                                           ?.copyWith(
                                             fontWeight: FontWeight.w800,
                                           ),
                                     ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      'Barcode: ${row.barcodeValue}',
-                                      style: theme.textTheme.titleMedium
-                                          ?.copyWith(fontSize: 20),
+                                  ),
+                                ),
+                                DataCell(
+                                  SizedBox(
+                                    width: 118,
+                                    child: Text(row.barcodeValue),
+                                  ),
+                                ),
+                                DataCell(Text(_displayValue(row.bibNumber))),
+                                DataCell(
+                                  SizedBox(
+                                    width: 120,
+                                    child: Text(_displayValue(row.city)),
+                                  ),
+                                ),
+                                DataCell(
+                                  Text(
+                                    row.age == null ? '--' : row.age.toString(),
+                                  ),
+                                ),
+                                DataCell(Text(_displayValue(row.gender))),
+                                DataCell(
+                                  SizedBox(
+                                    width: 170,
+                                    child: Text(
+                                      RaceService.buildDistanceLabel(
+                                        row.distanceName,
+                                        row.distanceMiles,
+                                      ),
                                     ),
-                                  ],
+                                  ),
                                 ),
-                              ),
-                              FilledButton.icon(
-                                onPressed: onEditRow == null
-                                    ? null
-                                    : () => onEditRow!(row),
-                                style: FilledButton.styleFrom(
-                                  minimumSize: const Size(140, 56),
-                                  textStyle: theme.textTheme.titleMedium
-                                      ?.copyWith(fontWeight: FontWeight.w700),
+                                DataCell(Text(_formatStartValue(row))),
+                                DataCell(Text(_formatEndValue(row))),
+                                DataCell(Text(_formatElapsedValue(row))),
+                                DataCell(
+                                  SizedBox(
+                                    width: 88,
+                                    child: Text(_formatPaceValue(row)),
+                                  ),
                                 ),
-                                icon: const Icon(Icons.edit_outlined),
-                                label: const Text('Edit'),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 14),
-                          Wrap(
-                            spacing: 12,
-                            runSpacing: 12,
-                            children: [
-                              _RosterInfoChip(
-                                label: 'Bib No.',
-                                value: row.bibNumber ?? 'Not set',
-                              ),
-                              _RosterInfoChip(
-                                label: 'City',
-                                value: row.city ?? 'Not set',
-                              ),
-                              _RosterInfoChip(
-                                label: 'Age',
-                                value: row.age?.toString() ?? 'Not set',
-                              ),
-                              _RosterInfoChip(
-                                label: 'Gender',
-                                value: row.gender ?? 'Not set',
-                              ),
-                              _RosterInfoChip(
-                                label: 'Payment',
-                                value: row.paymentStatus.label,
-                              ),
-                              _RosterInfoChip(
-                                label: 'Distance',
-                                value: RaceService.buildDistanceLabel(
-                                  row.distanceName,
-                                  row.distanceMiles,
+                                DataCell(Text(row.paymentStatus.label)),
+                                DataCell(
+                                  _DatabaseStatusPill(
+                                    label: row.editableStatusLabel,
+                                  ),
                                 ),
-                              ),
-                              _RosterInfoChip(
-                                label: 'Time',
-                                value: row.elapsedTimeMs == null
-                                    ? 'Not set'
-                                    : RaceService.formatElapsed(
-                                        row.elapsedTimeMs,
-                                      ),
-                              ),
-                              _RosterInfoChip(
-                                label: 'Pace',
-                                value:
-                                    RaceService.formatPace(
-                                      elapsedTimeMs: row.elapsedTimeMs,
-                                      distanceMiles: row.distanceMiles,
-                                      paceOverride: row.paceOverride,
-                                    ).trim().isEmpty
-                                    ? 'Not set'
-                                    : RaceService.formatPace(
-                                        elapsedTimeMs: row.elapsedTimeMs,
-                                        distanceMiles: row.distanceMiles,
-                                        paceOverride: row.paceOverride,
-                                      ),
-                              ),
-                              _RosterInfoChip(
-                                label: 'Status',
-                                value: row.statusLabel,
-                              ),
-                            ],
-                          ),
-                        ],
+                                DataCell(
+                                  FilledButton.tonalIcon(
+                                    onPressed: widget.onEditRow == null
+                                        ? null
+                                        : () => widget.onEditRow!(row),
+                                    icon: const Icon(Icons.edit_outlined),
+                                    label: const Text('Edit'),
+                                  ),
+                                ),
+                              ],
+                            );
+                          }),
+                        ),
                       ),
-                    );
-                  },
+                    ),
+                  ),
                 );
               },
               loading: () => const LinearProgressIndicator(),
@@ -1120,6 +1210,86 @@ class _RaceDatabaseCard extends ConsumerWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  String _displayValue(String? value) {
+    final trimmed = value?.trim();
+    if (trimmed == null || trimmed.isEmpty) {
+      return '--';
+    }
+    return trimmed;
+  }
+
+  String _formatStartValue(RaceResultRow row) {
+    return row.startTime == null
+        ? '--'
+        : RaceService.formatFinishTime(row.startTime);
+  }
+
+  String _formatEndValue(RaceResultRow row) {
+    return row.finishTime == null
+        ? '--'
+        : RaceService.formatFinishTime(row.finishTime);
+  }
+
+  String _formatElapsedValue(RaceResultRow row) {
+    return row.elapsedTimeMs == null
+        ? '--'
+        : RaceService.formatElapsed(row.elapsedTimeMs);
+  }
+
+  String _formatPaceValue(RaceResultRow row) {
+    final pace = RaceService.formatPace(
+      elapsedTimeMs: row.elapsedTimeMs,
+      distanceMiles: row.distanceMiles,
+      paceOverride: row.paceOverride,
+    ).trim();
+    return pace.isEmpty ? '--' : pace;
+  }
+}
+
+class _DatabaseStatusPill extends StatelessWidget {
+  const _DatabaseStatusPill({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final colors = switch (label) {
+      'Ended' => (
+        background: colorScheme.primaryContainer,
+        foreground: colorScheme.onPrimaryContainer,
+      ),
+      'Started' => (
+        background: colorScheme.tertiaryContainer,
+        foreground: colorScheme.onTertiaryContainer,
+      ),
+      'In Race' => (
+        background: colorScheme.secondaryContainer,
+        foreground: colorScheme.onSecondaryContainer,
+      ),
+      _ => (
+        background: colorScheme.surfaceContainerHighest,
+        foreground: colorScheme.onSurface,
+      ),
+    };
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: colors.background,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: theme.textTheme.labelLarge?.copyWith(
+          color: colors.foreground,
+          fontWeight: FontWeight.w800,
         ),
       ),
     );
@@ -1293,45 +1463,6 @@ class _RaceDistanceConfigsCard extends ConsumerWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _RosterInfoChip extends StatelessWidget {
-  const _RosterInfoChip({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            label,
-            style: theme.textTheme.labelLarge?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
       ),
     );
   }

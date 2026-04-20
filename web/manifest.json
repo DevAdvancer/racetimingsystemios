@@ -1,11 +1,11 @@
 {
-    "name": "RoxburyRaces",
-    "short_name": "RoxburyRaces",
+    "name": "RaceTimerApp",
+    "short_name": "RaceTimerApp",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "RoxburyRaces race-day timing and registration dashboard.",
+    "description": "RaceTimerApp race-day timing and registration dashboard.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

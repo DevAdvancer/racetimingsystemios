@@ -64,22 +64,27 @@ void main() {
     await helper.close();
   });
 
-  test('does not auto-select a stale saved race when no race is today', () async {
-    final oldRace = await databaseService.createRace(
-      name: 'Saved Race',
-      raceDate: DateTime(2026, 3, 21),
-    );
-    await settingsService.saveSettings(
-      (await settingsService.loadSettings()).copyWith(selectedRaceId: oldRace.id),
-    );
+  test(
+    'restores a saved organizer-selected race when no race is today',
+    () async {
+      final oldRace = await databaseService.createRace(
+        name: 'Saved Race',
+        raceDate: DateTime(2026, 3, 21),
+      );
+      await settingsService.saveSettings(
+        (await settingsService.loadSettings()).copyWith(
+          selectedRaceId: oldRace.id,
+        ),
+      );
 
-    final container = buildContainer();
-    addTearDown(container.dispose);
+      final container = buildContainer();
+      addTearDown(container.dispose);
 
-    final selectedRace = await container.read(currentRaceProvider.future);
+      final selectedRace = await container.read(currentRaceProvider.future);
 
-    expect(selectedRace, isNull);
-  });
+      expect(selectedRace?.id, oldRace.id);
+    },
+  );
 
   test('auto-selects the race scheduled for today', () async {
     final now = DateTime.now();
@@ -105,7 +110,31 @@ void main() {
     final container = buildContainer();
     addTearDown(container.dispose);
 
-    await container.read(currentRaceProvider.notifier).selectRace(chosenRace.id);
+    await container
+        .read(currentRaceProvider.notifier)
+        .selectRace(chosenRace.id);
+    final selectedRace = await container.read(currentRaceProvider.future);
+
+    expect(selectedRace?.id, chosenRace.id);
+  });
+
+  test('manual selection overrides the race scheduled for today', () async {
+    final now = DateTime.now();
+    await databaseService.createRace(
+      name: 'Today Race',
+      raceDate: DateTime(now.year, now.month, now.day),
+    );
+    final chosenRace = await databaseService.createRace(
+      name: 'Manual Race',
+      raceDate: DateTime(2026, 3, 21),
+    );
+
+    final container = buildContainer();
+    addTearDown(container.dispose);
+
+    await container
+        .read(currentRaceProvider.notifier)
+        .selectRace(chosenRace.id);
     final selectedRace = await container.read(currentRaceProvider.future);
 
     expect(selectedRace?.id, chosenRace.id);

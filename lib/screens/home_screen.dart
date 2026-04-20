@@ -27,7 +27,7 @@ class HomeScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const BrandAppBarTitle(pageTitle: 'Admin Dashboard'),
+        title: const BrandAppBarTitle(pageTitle: 'Choose Race'),
         actions: [
           IconButton(
             tooltip: 'Return to start screen',
@@ -422,10 +422,10 @@ class _HeroPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Race Dashboard', style: theme.textTheme.headlineLarge),
+          Text('Choose Race', style: theme.textTheme.headlineLarge),
           const SizedBox(height: 10),
           Text(
-            'Create a race, choose an existing race, then send volunteers into the simple race-day screen.',
+            'Create a race or choose an existing race, then open Race Day Console when volunteers are ready.',
             style: theme.textTheme.bodyLarge,
           ),
           const SizedBox(height: 18),
