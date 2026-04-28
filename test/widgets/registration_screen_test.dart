@@ -100,7 +100,7 @@ void main() {
   );
 
   testWidgets(
-    'registration screen suggests matching names from the first keyboard letter and previews the barcode',
+    'registration screen suggests matching names from the qwerty keyboard and previews the barcode',
     (tester) async {
       tester.view.physicalSize = const Size(1366, 834);
       tester.view.devicePixelRatio = 1.0;
@@ -233,7 +233,7 @@ void main() {
       expect(find.text('Jo'), findsOneWidget);
       expect(
         find.text(
-          'Select today\'s race in organizer setup to load the runner roster.',
+          'Choose a race in organizer setup to load the runner roster.',
         ),
         findsOneWidget,
       );

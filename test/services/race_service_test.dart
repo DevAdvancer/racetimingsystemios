@@ -3,6 +3,7 @@ import 'package:race_timer/database/database_helper.dart';
 import 'package:race_timer/models/app_settings.dart';
 import 'package:race_timer/models/check_in_match.dart';
 import 'package:race_timer/models/check_in_result.dart';
+import 'package:race_timer/models/discovered_printer.dart';
 import 'package:race_timer/models/finish_scan_result.dart';
 import 'package:race_timer/models/printer_status.dart';
 import 'package:race_timer/models/race_schedule_import.dart';
@@ -24,6 +25,11 @@ class FakePrinterService implements PrinterService {
 
   @override
   Future<PrinterStatus> configure() async => status;
+
+  @override
+  Future<List<DiscoveredPrinter>> discoverPrinters({
+    required PrinterConnectionType connectionType,
+  }) async => const [];
 
   @override
   Future<PrinterStatus> getStatus() async => status;
@@ -1089,7 +1095,7 @@ void main() {
   });
 
   test(
-    'endRace assigns the global stop time to checked-in runners without a finish scan',
+    'endRace assigns the global stop time to every runner without a finish scan',
     () async {
       final race = await raceService.createRace(name: 'Spring 5K');
       await raceService.importRoster(
@@ -1113,7 +1119,7 @@ void main() {
       final checkedInRunner = roster.firstWhere(
         (match) => match.runner.name == 'Taylor',
       );
-      final untouchedRunner = roster.firstWhere(
+      final unscannedRunner = roster.firstWhere(
         (match) => match.runner.name == 'Jordan',
       );
       final expectedElapsed = endedRace.endTime!
@@ -1128,8 +1134,59 @@ void main() {
         checkedInRunner.entry.elapsedTimeMs,
         inInclusiveRange(expectedElapsed - 5, expectedElapsed + 5),
       );
-      expect(untouchedRunner.entry.finishTime, isNull);
-      expect(untouchedRunner.rosterStatus, CheckInRosterStatus.registered);
+      expect(
+        unscannedRunner.entry.finishTime?.millisecondsSinceEpoch,
+        endedRace.endTime?.millisecondsSinceEpoch,
+      );
+      expect(
+        unscannedRunner.entry.elapsedTimeMs,
+        inInclusiveRange(expectedElapsed - 5, expectedElapsed + 5),
+      );
+      expect(unscannedRunner.rosterStatus, CheckInRosterStatus.raceCompleted);
+    },
+  );
+
+  test(
+    'endRace keeps scanned finish times and completes unscanned runners',
+    () async {
+      final race = await raceService.createRace(name: 'Spring 5K');
+      await raceService.importRoster(
+        const RosterImport(
+          sourceName: 'spring.xlsx',
+          runners: <ImportedRunnerData>[
+            ImportedRunnerData(name: 'Taylor'),
+            ImportedRunnerData(name: 'Jordan'),
+          ],
+        ),
+      );
+      final lookup = await raceService.lookupRunnerForCheckIn('Taylor');
+      final match = lookup.selectedMatch!;
+      await raceService.printCheckInMatch(match);
+      await raceService.startRace(race.id);
+
+      final scannedFinish = await raceService.recordFinish(
+        match.entry.barcodeValue,
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      final endedRace = await raceService.endRace(race.id);
+      final results = await raceService.getResults(race.id);
+      final scannedRunner = results.firstWhere(
+        (row) => row.runnerName == 'Taylor',
+      );
+      final unscannedRunner = results.firstWhere(
+        (row) => row.runnerName == 'Jordan',
+      );
+
+      expect(
+        scannedRunner.finishTime?.millisecondsSinceEpoch,
+        scannedFinish.finishTime?.millisecondsSinceEpoch,
+      );
+      expect(scannedRunner.elapsedTimeMs, scannedFinish.elapsedTimeMs);
+      expect(
+        unscannedRunner.finishTime?.millisecondsSinceEpoch,
+        endedRace.endTime?.millisecondsSinceEpoch,
+      );
+      expect(unscannedRunner.elapsedTimeMs, isNotNull);
     },
   );
 

@@ -4,8 +4,9 @@ import 'package:go_router/go_router.dart';
 import 'package:race_timer/core/constants.dart';
 import 'package:race_timer/core/user_facing_error.dart';
 import 'package:race_timer/models/race.dart';
-import 'package:race_timer/providers/admin_access_provider.dart';
+import 'package:race_timer/models/race_result.dart';
 import 'package:race_timer/providers/race_provider.dart';
+import 'package:race_timer/providers/results_provider.dart';
 import 'package:race_timer/services/race_service.dart';
 import 'package:race_timer/widgets/branding.dart';
 import 'package:race_timer/widgets/race_clock.dart';
@@ -21,15 +22,12 @@ class RaceControlScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const BrandAppBarTitle(pageTitle: 'Race Control'),
+        title: const BrandAppBarTitle(pageTitle: 'Race Timing'),
         actions: [
           IconButton(
-            tooltip: 'Return to start screen',
-            onPressed: () {
-              ref.read(adminAccessProvider.notifier).lock();
-              context.go(AppRoutes.home);
-            },
-            icon: const Icon(Icons.lock_outline),
+            tooltip: 'Back to Race Dashboard',
+            onPressed: () => context.go(AppRoutes.raceDashboard),
+            icon: const Icon(Icons.arrow_back),
           ),
         ],
       ),
@@ -45,6 +43,7 @@ class RaceControlScreen extends ConsumerWidget {
                   tone: StatusBannerTone.warning,
                 );
               }
+              final raceResultsAsync = ref.watch(raceResultsProvider(race.id));
 
               return SingleChildScrollView(
                 child: Column(
@@ -64,6 +63,8 @@ class RaceControlScreen extends ConsumerWidget {
                       isRunning: race.isRunning,
                     ),
                     const SizedBox(height: 20),
+                    _EarlyStartersList(resultsAsync: raceResultsAsync),
+                    const SizedBox(height: 20),
                     SizedBox(
                       width: double.infinity,
                       height: 88,
@@ -73,7 +74,7 @@ class RaceControlScreen extends ConsumerWidget {
                             : () async {
                                 final confirmed = await _confirmAction(
                                   context,
-                                  title: 'Start race?',
+                                  title: 'Record global start?',
                                   message:
                                       'This will record the global start time for everyone except early starters.',
                                 );
@@ -84,6 +85,8 @@ class RaceControlScreen extends ConsumerWidget {
                                   await ref
                                       .read(currentRaceProvider.notifier)
                                       .startRace(race.id);
+                                  ref.invalidate(raceResultsProvider(race.id));
+                                  ref.invalidate(resultsProvider);
                                   if (context.mounted) {
                                     await showUserMessageDialog(
                                       context,
@@ -97,9 +100,9 @@ class RaceControlScreen extends ConsumerWidget {
                                   if (context.mounted) {
                                     await showUserMessageDialog(
                                       context,
-                                      title: 'Could not start race',
+                                      title: 'Could not record global start',
                                       message:
-                                          'The race could not be started. Please try again.',
+                                          'The global start could not be recorded. Please try again.',
                                       tone: UserDialogTone.error,
                                     );
                                   }
@@ -127,7 +130,7 @@ class RaceControlScreen extends ConsumerWidget {
                                   title: 'Stop race?',
                                   message: unfinishedCount == 0
                                       ? 'This will record the global stop time and close finish scanning for this race.'
-                                      : 'This will record the global stop time. $unfinishedCount checked-in ${unfinishedCount == 1 ? 'runner has' : 'runners have'} no finish scan yet, so ${unfinishedCount == 1 ? 'that runner will' : 'those runners will'} be completed using the stop time.',
+                                      : 'This will record the global stop time. $unfinishedCount ${unfinishedCount == 1 ? 'runner has' : 'runners have'} no finish scan yet, so ${unfinishedCount == 1 ? 'that runner will' : 'those runners will'} be completed using the stop time.',
                                 );
                                 if (!confirmed) {
                                   return;
@@ -136,13 +139,15 @@ class RaceControlScreen extends ConsumerWidget {
                                   await ref
                                       .read(currentRaceProvider.notifier)
                                       .endRace(race.id);
+                                  ref.invalidate(raceResultsProvider(race.id));
+                                  ref.invalidate(resultsProvider);
                                   if (context.mounted) {
                                     await showUserMessageDialog(
                                       context,
                                       title: 'Global stop recorded',
                                       message: unfinishedCount == 0
                                           ? 'The race clock is now stopped and finish scanning is closed.'
-                                          : 'The race clock is now stopped. $unfinishedCount checked-in ${unfinishedCount == 1 ? 'runner was' : 'runners were'} assigned the global stop time because no finish scan was recorded.',
+                                          : 'The race clock is now stopped. $unfinishedCount ${unfinishedCount == 1 ? 'runner was' : 'runners were'} assigned the global stop time because no finish scan was recorded.',
                                       tone: UserDialogTone.success,
                                     );
                                   }
@@ -230,5 +235,90 @@ class RaceControlScreen extends ConsumerWidget {
       return 'Status: ${race.statusLabel} • Final total $finalTotal';
     }
     return 'Status: ${race.statusLabel}';
+  }
+}
+
+class _EarlyStartersList extends StatelessWidget {
+  const _EarlyStartersList({required this.resultsAsync});
+
+  final AsyncValue<List<RaceResultRow>> resultsAsync;
+
+  @override
+  Widget build(BuildContext context) {
+    return resultsAsync.when(
+      data: (rows) {
+        final earlyStarters =
+            rows
+                .where((row) => row.earlyStart && row.startTime != null)
+                .toList(growable: false)
+              ..sort(
+                (left, right) => left.startTime!.compareTo(right.startTime!),
+              );
+
+        if (earlyStarters.isEmpty) {
+          return const StatusBanner(
+            title: 'Early starters',
+            message:
+                'No personal start times have been recorded yet. Before the global start, scan a runner barcode in Timing Capture to add one here.',
+            tone: StatusBannerTone.info,
+          );
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            StatusBanner(
+              title:
+                  '${earlyStarters.length} early ${earlyStarters.length == 1 ? 'starter' : 'starters'}',
+              message:
+                  'These runners keep their personal start time when the global start is recorded.',
+              tone: StatusBannerTone.success,
+            ),
+            const SizedBox(height: 12),
+            ...earlyStarters.map((row) => _EarlyStarterTile(row: row)),
+          ],
+        );
+      },
+      loading: () => const LinearProgressIndicator(),
+      error: (error, stackTrace) => StatusBanner(
+        title: 'Early starters unavailable',
+        message: userFacingErrorMessage(
+          error,
+          fallback: 'The early starter list could not load right now.',
+        ),
+        tone: StatusBannerTone.error,
+      ),
+    );
+  }
+}
+
+class _EarlyStarterTile extends StatelessWidget {
+  const _EarlyStarterTile({required this.row});
+
+  final RaceResultRow row;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final details = <String>[
+      if (row.bibNumber != null && row.bibNumber!.trim().isNotEmpty)
+        'Bib ${row.bibNumber}',
+      row.barcodeValue,
+    ].join(' • ');
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: ListTile(
+        leading: const Icon(Icons.directions_run),
+        title: Text(row.runnerName),
+        subtitle: Text(details),
+        trailing: Text(
+          RaceService.formatFinishTime(row.startTime),
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
   }
 }

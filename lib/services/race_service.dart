@@ -830,7 +830,7 @@ class RaceService {
     if (race.isRunning) {
       if (race.gunTime == null) {
         final result = FinishScanResult.failure(
-          'The global start time is missing. Please return to Race Control.',
+          'The global start time is missing. Please return to Race Timing.',
         );
         await _logScanOutcome(
           raceId: race.id,

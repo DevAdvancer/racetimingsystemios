@@ -75,11 +75,15 @@ class _AdminAccessDialogState extends State<_AdminAccessDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final mediaSize = MediaQuery.sizeOf(context);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
     return AlertDialog(
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      insetPadding: EdgeInsets.symmetric(
+        horizontal: mediaSize.width < 700 ? 16 : 24,
+        vertical: mediaSize.height < 900 ? 16 : 24,
+      ),
       titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
       contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
       actionsPadding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
@@ -103,105 +107,110 @@ class _AdminAccessDialogState extends State<_AdminAccessDialog> {
           const Expanded(child: Text('Organizer Access')),
         ],
       ),
-      content: SizedBox(
-        width: 420,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Tap the 3-digit organizer code to open the dashboard.',
-              style: theme.textTheme.bodyLarge?.copyWith(
-                color: colorScheme.onSurfaceVariant,
+      content: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: mediaSize.width < 700 ? mediaSize.width - 56 : 420,
+          maxHeight: mediaSize.height * 0.72,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Tap the 3-digit organizer code to open the dashboard.',
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
               ),
-            ),
-            const SizedBox(height: 18),
-            Row(
-              children: List<Widget>.generate(3, (index) {
-                final hasDigit = index < _enteredCode.length;
-                return Expanded(
-                  child: Container(
-                    height: 78,
-                    margin: EdgeInsets.only(right: index == 2 ? 0 : 12),
-                    decoration: BoxDecoration(
-                      color: colorScheme.primaryContainer,
-                      borderRadius: BorderRadius.circular(22),
-                      border: Border.all(
-                        color: hasDigit
-                            ? colorScheme.primary
-                            : colorScheme.outlineVariant,
-                        width: hasDigit ? 2 : 1.5,
+              const SizedBox(height: 18),
+              Row(
+                children: List<Widget>.generate(3, (index) {
+                  final hasDigit = index < _enteredCode.length;
+                  return Expanded(
+                    child: Container(
+                      height: 78,
+                      margin: EdgeInsets.only(right: index == 2 ? 0 : 12),
+                      decoration: BoxDecoration(
+                        color: colorScheme.primaryContainer,
+                        borderRadius: BorderRadius.circular(22),
+                        border: Border.all(
+                          color: hasDigit
+                              ? colorScheme.primary
+                              : colorScheme.outlineVariant,
+                          width: hasDigit ? 2 : 1.5,
+                        ),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        hasDigit ? _enteredCode[index] : '•',
+                        style: theme.textTheme.displaySmall?.copyWith(
+                          fontSize: hasDigit ? 42 : 34,
+                          color: hasDigit
+                              ? colorScheme.onPrimaryContainer
+                              : colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w800,
+                        ),
                       ),
                     ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      hasDigit ? _enteredCode[index] : '•',
-                      style: theme.textTheme.displaySmall?.copyWith(
-                        fontSize: hasDigit ? 42 : 34,
-                        color: hasDigit
-                            ? colorScheme.onPrimaryContainer
-                            : colorScheme.onSurfaceVariant,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                );
-              }),
-            ),
-            const SizedBox(height: 18),
-            Text(
-              _errorText ??
-                  'The dashboard opens automatically as soon as the 3 digits match.',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: _errorText == null
-                    ? colorScheme.onSurfaceVariant
-                    : colorScheme.error,
-                fontWeight: FontWeight.w600,
+                  );
+                }),
               ),
-            ),
-            const SizedBox(height: 18),
-            ..._digitRows.map(
-              (row) => Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Row(
-                  children: row
-                      .map(
-                        (digit) => Expanded(
-                          child: Padding(
-                            padding: EdgeInsets.only(
-                              right: digit == row.last ? 0 : 12,
-                            ),
-                            child: _PinPadButton(
-                              label: digit,
-                              onPressed: () => _appendDigit(digit),
+              const SizedBox(height: 18),
+              Text(
+                _errorText ??
+                    'The dashboard opens automatically as soon as the 3 digits match.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: _errorText == null
+                      ? colorScheme.onSurfaceVariant
+                      : colorScheme.error,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 18),
+              ..._digitRows.map(
+                (row) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Row(
+                    children: row
+                        .map(
+                          (digit) => Expanded(
+                            child: Padding(
+                              padding: EdgeInsets.only(
+                                right: digit == row.last ? 0 : 12,
+                              ),
+                              child: _PinPadButton(
+                                label: digit,
+                                onPressed: () => _appendDigit(digit),
+                              ),
                             ),
                           ),
-                        ),
-                      )
-                      .toList(growable: false),
+                        )
+                        .toList(growable: false),
+                  ),
                 ),
               ),
-            ),
-            Row(
-              children: [
-                Expanded(
-                  child: _PinPadButton(
-                    label: '0',
-                    onPressed: () => _appendDigit('0'),
+              Row(
+                children: [
+                  Expanded(
+                    child: _PinPadButton(
+                      label: '0',
+                      onPressed: () => _appendDigit('0'),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _PinPadButton(
-                    label: 'Clear',
-                    icon: Icons.backspace_outlined,
-                    onPressed: _deleteDigit,
-                    filled: false,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _PinPadButton(
+                      label: 'Clear',
+                      icon: Icons.backspace_outlined,
+                      onPressed: _deleteDigit,
+                      filled: false,
+                    ),
                   ),
-                ),
-              ],
-            ),
-          ],
+                ],
+              ),
+            ],
+          ),
         ),
       ),
       actions: [

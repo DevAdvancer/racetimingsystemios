@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:race_timer/core/constants.dart';
 import 'package:race_timer/core/user_facing_error.dart';
-import 'package:race_timer/providers/admin_access_provider.dart';
 import 'package:race_timer/providers/diagnostics_provider.dart';
 import 'package:race_timer/providers/race_provider.dart';
 import 'package:race_timer/widgets/branding.dart';
@@ -22,12 +21,9 @@ class DiagnosticsScreen extends ConsumerWidget {
         title: const BrandAppBarTitle(pageTitle: 'Diagnostics'),
         actions: [
           IconButton(
-            tooltip: 'Return to start screen',
-            onPressed: () {
-              ref.read(adminAccessProvider.notifier).lock();
-              context.go(AppRoutes.home);
-            },
-            icon: const Icon(Icons.lock_outline),
+            tooltip: 'Back to Choose Race',
+            onPressed: () => context.go(AppRoutes.adminHome),
+            icon: const Icon(Icons.arrow_back),
           ),
         ],
       ),

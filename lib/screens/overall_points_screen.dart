@@ -6,7 +6,6 @@ import 'package:race_timer/core/constants.dart';
 import 'package:race_timer/core/user_facing_error.dart';
 import 'package:race_timer/models/overall_runner_points_summary.dart';
 import 'package:race_timer/models/race.dart';
-import 'package:race_timer/providers/admin_access_provider.dart';
 import 'package:race_timer/providers/points_provider.dart';
 import 'package:race_timer/providers/race_provider.dart';
 import 'package:race_timer/widgets/branding.dart';
@@ -40,12 +39,9 @@ class _OverallPointsScreenState extends ConsumerState<OverallPointsScreen> {
         title: const BrandAppBarTitle(pageTitle: 'Overall Points'),
         actions: [
           IconButton(
-            tooltip: 'Return to start screen',
-            onPressed: () {
-              ref.read(adminAccessProvider.notifier).lock();
-              context.go(AppRoutes.home);
-            },
-            icon: const Icon(Icons.lock_outline),
+            tooltip: 'Back to Choose Race',
+            onPressed: () => context.go(AppRoutes.adminHome),
+            icon: const Icon(Icons.arrow_back),
           ),
         ],
       ),

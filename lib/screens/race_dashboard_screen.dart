@@ -35,15 +35,12 @@ class RaceDashboardScreen extends ConsumerWidget {
         title: const BrandAppBarTitle(pageTitle: 'Race Day Console'),
         actions: [
           IconButton(
-            tooltip: 'Return to start screen',
-            onPressed: () {
-              ref.read(adminAccessProvider.notifier).lock();
-              context.go(AppRoutes.home);
-            },
-            icon: const Icon(Icons.lock_outline),
+            tooltip: 'Back to Choose Race',
+            onPressed: () => context.go(AppRoutes.adminHome),
+            icon: const Icon(Icons.arrow_back),
           ),
           PopupMenuButton<String>(
-            onSelected: (value) => context.push(value),
+            onSelected: (value) => context.go(value),
             itemBuilder: (context) => const [
               PopupMenuItem(
                 value: AppRoutes.adminHome,
@@ -152,22 +149,22 @@ class RaceDashboardScreen extends ConsumerWidget {
                           'Return to the large runner-facing check-in screen.',
                       icon: Icons.badge_outlined,
                       onTap: () {
-                        ref.read(adminAccessProvider.notifier).lock();
                         context.go(AppRoutes.registration);
+                        ref.read(adminAccessProvider.notifier).lock();
                       },
                     ),
                     PrimaryActionTile(
-                      title: 'Start Race',
-                      subtitle: 'Manage gun time and race status.',
+                      title: 'Race Timing',
+                      subtitle: 'Manage gun time, stop time, and race status.',
                       icon: Icons.flag_circle,
-                      onTap: () => context.push(AppRoutes.raceControl),
+                      onTap: () => context.go(AppRoutes.raceControl),
                     ),
                     PrimaryActionTile(
-                      title: 'Scan Runners',
+                      title: 'Timing Capture',
                       subtitle:
                           'Capture barcode scans for early starts and finishes.',
                       icon: Icons.qr_code_scanner,
-                      onTap: () => context.push(AppRoutes.scanner),
+                      onTap: () => context.go(AppRoutes.scanner),
                     ),
                   ];
 
@@ -396,7 +393,33 @@ class RaceDashboardScreen extends ConsumerWidget {
     WidgetRef ref,
     Race race,
   ) async {
-    final summaries = await ref.read(racePointsProvider(race.id).future);
+    late final List<RunnerPointsSummary> summaries;
+    late final List<RaceResultRow> results;
+
+    try {
+      final loaded = await Future.wait<Object>([
+        ref.read(racePointsProvider(race.id).future),
+        ref.read(raceResultsProvider(race.id).future),
+      ]);
+      summaries = loaded[0] as List<RunnerPointsSummary>;
+      results = loaded[1] as List<RaceResultRow>;
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+      await showUserMessageDialog(
+        context,
+        title: 'Could not load points table',
+        message: userFacingErrorMessage(
+          error,
+          fallback:
+              'The race positions and racer points could not be loaded right now.',
+        ),
+        tone: UserDialogTone.error,
+      );
+      return;
+    }
+
     if (!context.mounted) {
       return;
     }
@@ -413,8 +436,11 @@ class RaceDashboardScreen extends ConsumerWidget {
 
     final payload = await showDialog<_AwardPointsPayload>(
       context: context,
-      builder: (context) =>
-          _AwardPointsDialog(race: race, summaries: summaries),
+      builder: (context) => _AwardPointsDialog(
+        race: race,
+        summaries: summaries,
+        results: results,
+      ),
     );
     if (payload == null) {
       return;
@@ -429,6 +455,7 @@ class RaceDashboardScreen extends ConsumerWidget {
             points: payload.points,
           );
       ref.invalidate(racePointsProvider(race.id));
+      ref.invalidate(overallPointsProvider);
 
       if (!context.mounted) {
         return;
@@ -1528,10 +1555,15 @@ class _AwardPointsPayload {
 }
 
 class _AwardPointsDialog extends StatefulWidget {
-  const _AwardPointsDialog({required this.race, required this.summaries});
+  const _AwardPointsDialog({
+    required this.race,
+    required this.summaries,
+    required this.results,
+  });
 
   final Race race;
   final List<RunnerPointsSummary> summaries;
+  final List<RaceResultRow> results;
 
   @override
   State<_AwardPointsDialog> createState() => _AwardPointsDialogState();
@@ -1539,31 +1571,37 @@ class _AwardPointsDialog extends StatefulWidget {
 
 class _AwardPointsDialogState extends State<_AwardPointsDialog> {
   final TextEditingController _pointsController = TextEditingController();
+  final ScrollController _verticalScrollController = ScrollController();
+  final ScrollController _horizontalScrollController = ScrollController();
+  late final List<_AwardPointsRow> _rows;
   int? _selectedRunnerId;
   String? _validationMessage;
 
   @override
   void initState() {
     super.initState();
-    if (widget.summaries.isNotEmpty) {
-      _selectedRunnerId = widget.summaries.first.runnerId;
+    _rows = _buildAwardPointsRows(widget.summaries, widget.results);
+    if (_rows.isNotEmpty) {
+      _selectedRunnerId = _rows.first.summary.runnerId;
     }
   }
 
   @override
   void dispose() {
     _pointsController.dispose();
+    _verticalScrollController.dispose();
+    _horizontalScrollController.dispose();
     super.dispose();
   }
 
-  RunnerPointsSummary? get _selectedSummary {
+  _AwardPointsRow? get _selectedRow {
     final runnerId = _selectedRunnerId;
     if (runnerId == null) {
       return null;
     }
-    for (final summary in widget.summaries) {
-      if (summary.runnerId == runnerId) {
-        return summary;
+    for (final row in _rows) {
+      if (row.summary.runnerId == runnerId) {
+        return row;
       }
     }
     return null;
@@ -1592,46 +1630,123 @@ class _AwardPointsDialogState extends State<_AwardPointsDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final summary = _selectedSummary;
+    final mediaSize = MediaQuery.sizeOf(context);
+    final selectedRow = _selectedRow;
+    final selectedSummary = selectedRow?.summary;
 
     return AlertDialog(
       title: const Text('Add Racer Points'),
-      content: SizedBox(
-        width: 480,
+      content: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: mediaSize.width < 760 ? mediaSize.width - 56 : 940,
+          maxHeight: mediaSize.height * 0.76,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Pick a racer from ${widget.race.name}, then add the new points. Any previous saved total will be kept and increased.',
+              'Pick a racer from ${widget.race.name}, check their race position, then add the new points.',
               style: Theme.of(context).textTheme.bodyLarge,
             ),
             const SizedBox(height: 18),
-            DropdownButtonFormField<int>(
-              initialValue: _selectedRunnerId,
-              decoration: const InputDecoration(labelText: 'Racer'),
-              items: widget.summaries
-                  .map(
-                    (summary) => DropdownMenuItem<int>(
-                      value: summary.runnerId,
-                      child: Text(summary.runnerName),
+            Flexible(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.outlineVariant,
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Scrollbar(
+                  controller: _verticalScrollController,
+                  thumbVisibility: true,
+                  child: SingleChildScrollView(
+                    controller: _verticalScrollController,
+                    child: Scrollbar(
+                      controller: _horizontalScrollController,
+                      notificationPredicate: (notification) =>
+                          notification.metrics.axis == Axis.horizontal,
+                      thumbVisibility: true,
+                      child: SingleChildScrollView(
+                        controller: _horizontalScrollController,
+                        scrollDirection: Axis.horizontal,
+                        child: DataTable(
+                          showCheckboxColumn: false,
+                          headingTextStyle: Theme.of(context)
+                              .textTheme
+                              .labelLarge
+                              ?.copyWith(fontWeight: FontWeight.w800),
+                          columns: const [
+                            DataColumn(label: Text('Position')),
+                            DataColumn(label: Text('Racer')),
+                            DataColumn(label: Text('Status')),
+                            DataColumn(
+                              label: Text('Race Points'),
+                              numeric: true,
+                            ),
+                            DataColumn(
+                              label: Text('Total Points'),
+                              numeric: true,
+                            ),
+                            DataColumn(label: Text('Barcode')),
+                          ],
+                          rows: _rows
+                              .map((row) {
+                                final summary = row.summary;
+                                return DataRow(
+                                  selected:
+                                      summary.runnerId == _selectedRunnerId,
+                                  onSelectChanged: (_) {
+                                    setState(() {
+                                      _selectedRunnerId = summary.runnerId;
+                                      _validationMessage = null;
+                                    });
+                                  },
+                                  cells: [
+                                    DataCell(
+                                      Text(
+                                        row.positionLabel,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .titleMedium
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                      ),
+                                    ),
+                                    DataCell(
+                                      SizedBox(
+                                        width: 220,
+                                        child: Text(
+                                          summary.runnerName,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ),
+                                    DataCell(Text(row.statusLabel)),
+                                    DataCell(Text('${summary.pointsInRace}')),
+                                    DataCell(Text('${summary.totalPoints}')),
+                                    DataCell(Text(summary.barcodeValue)),
+                                  ],
+                                );
+                              })
+                              .toList(growable: false),
+                        ),
+                      ),
                     ),
-                  )
-                  .toList(growable: false),
-              onChanged: (value) {
-                setState(() {
-                  _selectedRunnerId = value;
-                  _validationMessage = null;
-                });
-              },
+                  ),
+                ),
+              ),
             ),
             const SizedBox(height: 16),
-            if (summary != null)
+            if (selectedRow != null && selectedSummary != null)
               StatusBanner(
-                title: '${summary.totalPoints} total points',
+                title:
+                    '${selectedSummary.runnerName} • ${selectedRow.positionLabel}',
                 message:
-                    '${summary.pointsInRace} points already assigned in this race${summary.awardCount == 0 ? '.' : '. ${summary.awardCount} point award${summary.awardCount == 1 ? '' : 's'} saved so far.'}',
-                tone: summary.totalPoints > 0
+                    '${selectedRow.statusLabel}. ${selectedSummary.pointsInRace} points already assigned in this race, ${selectedSummary.totalPoints} total points saved.',
+                tone: selectedSummary.totalPoints > 0
                     ? StatusBannerTone.success
                     : StatusBannerTone.info,
               ),
@@ -1666,6 +1781,166 @@ class _AwardPointsDialogState extends State<_AwardPointsDialog> {
       ],
     );
   }
+}
+
+class _AwardPointsRow {
+  const _AwardPointsRow({
+    required this.summary,
+    required this.positionLabel,
+    required this.statusLabel,
+    required this.sortGroup,
+    required this.sortValue,
+  });
+
+  final RunnerPointsSummary summary;
+  final String positionLabel;
+  final String statusLabel;
+  final int sortGroup;
+  final int sortValue;
+}
+
+class _RacePositionInfo {
+  const _RacePositionInfo({
+    required this.positionLabel,
+    required this.statusLabel,
+    required this.sortGroup,
+    required this.sortValue,
+  });
+
+  final String positionLabel;
+  final String statusLabel;
+  final int sortGroup;
+  final int sortValue;
+}
+
+List<_AwardPointsRow> _buildAwardPointsRows(
+  List<RunnerPointsSummary> summaries,
+  List<RaceResultRow> results,
+) {
+  final positions = _buildRacePositionLookup(results);
+  final rows = summaries
+      .map((summary) {
+        final position = positions[summary.runnerId];
+        return _AwardPointsRow(
+          summary: summary,
+          positionLabel: position?.positionLabel ?? '--',
+          statusLabel: position?.statusLabel ?? 'Registered',
+          sortGroup: position?.sortGroup ?? 4,
+          sortValue: position?.sortValue ?? summary.runnerId,
+        );
+      })
+      .toList(growable: false);
+
+  rows.sort((left, right) {
+    final groupComparison = left.sortGroup.compareTo(right.sortGroup);
+    if (groupComparison != 0) {
+      return groupComparison;
+    }
+    final valueComparison = left.sortValue.compareTo(right.sortValue);
+    if (valueComparison != 0) {
+      return valueComparison;
+    }
+    return left.summary.runnerName.compareTo(right.summary.runnerName);
+  });
+
+  return rows;
+}
+
+Map<int, _RacePositionInfo> _buildRacePositionLookup(
+  List<RaceResultRow> results,
+) {
+  final sortedRows = results.toList(growable: false)
+    ..sort(_compareRowsForRacePosition);
+  final positions = <int, _RacePositionInfo>{};
+  var finishPlace = 0;
+
+  for (final row in sortedRows) {
+    final finishTime = row.finishTime;
+    final startTime = row.startTime;
+    final checkedInAt = row.checkedInAt;
+
+    if (finishTime != null) {
+      finishPlace += 1;
+      positions.putIfAbsent(
+        row.runnerId,
+        () => _RacePositionInfo(
+          positionLabel: '#$finishPlace',
+          statusLabel: 'Finished',
+          sortGroup: 0,
+          sortValue: finishTime.millisecondsSinceEpoch,
+        ),
+      );
+      continue;
+    }
+
+    if (startTime != null) {
+      positions.putIfAbsent(
+        row.runnerId,
+        () => _RacePositionInfo(
+          positionLabel: '--',
+          statusLabel: 'Started',
+          sortGroup: 1,
+          sortValue: startTime.millisecondsSinceEpoch,
+        ),
+      );
+      continue;
+    }
+
+    if (checkedInAt != null) {
+      positions.putIfAbsent(
+        row.runnerId,
+        () => _RacePositionInfo(
+          positionLabel: '--',
+          statusLabel: 'Checked in',
+          sortGroup: 2,
+          sortValue: checkedInAt.millisecondsSinceEpoch,
+        ),
+      );
+      continue;
+    }
+
+    positions.putIfAbsent(
+      row.runnerId,
+      () => _RacePositionInfo(
+        positionLabel: '--',
+        statusLabel: 'Registered',
+        sortGroup: 3,
+        sortValue: row.entryId,
+      ),
+    );
+  }
+
+  return positions;
+}
+
+int _compareRowsForRacePosition(RaceResultRow left, RaceResultRow right) {
+  final leftFinish = left.finishTime;
+  final rightFinish = right.finishTime;
+  if (leftFinish != null && rightFinish != null) {
+    final comparison = leftFinish.compareTo(rightFinish);
+    return comparison == 0 ? left.entryId.compareTo(right.entryId) : comparison;
+  }
+  if (leftFinish != null) {
+    return -1;
+  }
+  if (rightFinish != null) {
+    return 1;
+  }
+
+  final leftStart = left.startTime;
+  final rightStart = right.startTime;
+  if (leftStart != null && rightStart != null) {
+    final comparison = leftStart.compareTo(rightStart);
+    return comparison == 0 ? left.entryId.compareTo(right.entryId) : comparison;
+  }
+  if (leftStart != null) {
+    return -1;
+  }
+  if (rightStart != null) {
+    return 1;
+  }
+
+  return left.entryId.compareTo(right.entryId);
 }
 
 class _AddRunnerDialog extends StatefulWidget {
@@ -1811,11 +2086,15 @@ class _EditRosterEntryDialogState extends State<_EditRosterEntryDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final mediaSize = MediaQuery.sizeOf(context);
 
     return AlertDialog(
       title: const Text('Edit Racer Data'),
-      content: SizedBox(
-        width: 560,
+      content: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: mediaSize.width < 820 ? mediaSize.width - 56 : 560,
+          maxHeight: mediaSize.height * 0.76,
+        ),
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -2035,83 +2314,89 @@ class _AddRunnerDialogState extends State<_AddRunnerDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final mediaSize = MediaQuery.sizeOf(context);
     return AlertDialog(
       title: const Text('Add New Runner'),
-      content: SizedBox(
-        width: 460,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Add a runner directly to ${widget.race.name} even if they are not in the imported spreadsheet.',
-              style: Theme.of(context).textTheme.bodyLarge,
-            ),
-            const SizedBox(height: 18),
-            TextField(
-              controller: _controller,
-              focusNode: _focusNode,
-              autofocus: true,
-              decoration: InputDecoration(
-                labelText: 'Runner name',
-                errorText: _validationMessage,
+      content: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: mediaSize.width < 760 ? mediaSize.width - 56 : 460,
+          maxHeight: mediaSize.height * 0.72,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Add a runner directly to ${widget.race.name} even if they are not in the imported spreadsheet.',
+                style: Theme.of(context).textTheme.bodyLarge,
               ),
-              onChanged: (_) {
-                if (_validationMessage == null) {
-                  return;
-                }
-                setState(() {
-                  _validationMessage = null;
-                });
-              },
-              onSubmitted: (_) => _submit(),
-            ),
-            const SizedBox(height: 18),
-            if (widget.distanceConfigs.isNotEmpty) ...[
-              DropdownButtonFormField<int?>(
-                initialValue: _raceDistanceId,
-                decoration: const InputDecoration(
-                  labelText: 'Distance',
-                  helperText:
-                      'New walk-up runners start in the primary distance by default.',
+              const SizedBox(height: 18),
+              TextField(
+                controller: _controller,
+                focusNode: _focusNode,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: 'Runner name',
+                  errorText: _validationMessage,
                 ),
-                items: widget.distanceConfigs
+                onChanged: (_) {
+                  if (_validationMessage == null) {
+                    return;
+                  }
+                  setState(() {
+                    _validationMessage = null;
+                  });
+                },
+                onSubmitted: (_) => _submit(),
+              ),
+              const SizedBox(height: 18),
+              if (widget.distanceConfigs.isNotEmpty) ...[
+                DropdownButtonFormField<int?>(
+                  initialValue: _raceDistanceId,
+                  decoration: const InputDecoration(
+                    labelText: 'Distance',
+                    helperText:
+                        'New walk-up runners start in the primary distance by default.',
+                  ),
+                  items: widget.distanceConfigs
+                      .map(
+                        (config) => DropdownMenuItem<int?>(
+                          value: config.id,
+                          child: Text(config.sectionLabel),
+                        ),
+                      )
+                      .toList(growable: false),
+                  onChanged: (value) {
+                    setState(() {
+                      _raceDistanceId = value;
+                    });
+                  },
+                ),
+                const SizedBox(height: 18),
+              ],
+              DropdownButtonFormField<PaymentStatus>(
+                initialValue: _paymentStatus,
+                decoration: const InputDecoration(labelText: 'Payment status'),
+                items: PaymentStatus.values
                     .map(
-                      (config) => DropdownMenuItem<int?>(
-                        value: config.id,
-                        child: Text(config.sectionLabel),
+                      (status) => DropdownMenuItem<PaymentStatus>(
+                        value: status,
+                        child: Text(status.label),
                       ),
                     )
                     .toList(growable: false),
                 onChanged: (value) {
+                  if (value == null) {
+                    return;
+                  }
                   setState(() {
-                    _raceDistanceId = value;
+                    _paymentStatus = value;
                   });
                 },
               ),
-              const SizedBox(height: 18),
             ],
-            DropdownButtonFormField<PaymentStatus>(
-              initialValue: _paymentStatus,
-              decoration: const InputDecoration(labelText: 'Payment status'),
-              items: PaymentStatus.values
-                  .map(
-                    (status) => DropdownMenuItem<PaymentStatus>(
-                      value: status,
-                      child: Text(status.label),
-                    ),
-                  )
-                  .toList(growable: false),
-              onChanged: (value) {
-                if (value == null) {
-                  return;
-                }
-                setState(() {
-                  _paymentStatus = value;
-                });
-              },
-            ),
-          ],
+          ),
         ),
       ),
       actions: [
@@ -2184,61 +2469,67 @@ class _RaceDistanceDialogState extends State<_RaceDistanceDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final mediaSize = MediaQuery.sizeOf(context);
     return AlertDialog(
       title: Text(widget.existing == null ? 'Add Distance' : 'Edit Distance'),
-      content: SizedBox(
-        width: 480,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Create one main distance and any alternate distances for the same event day. Pace is calculated per runner from the assigned distance.',
-              style: Theme.of(context).textTheme.bodyLarge,
-            ),
-            const SizedBox(height: 18),
-            TextField(
-              controller: _nameController,
-              decoration: InputDecoration(
-                labelText: 'Distance name',
-                hintText: 'Example: Full Distance or Alternate Distance',
-                errorText: _validationMessage,
+      content: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: mediaSize.width < 760 ? mediaSize.width - 56 : 480,
+          maxHeight: mediaSize.height * 0.72,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Create one main distance and any alternate distances for the same event day. Pace is calculated per runner from the assigned distance.',
+                style: Theme.of(context).textTheme.bodyLarge,
               ),
-              onChanged: (_) {
-                if (_validationMessage == null) {
-                  return;
-                }
-                setState(() {
-                  _validationMessage = null;
-                });
-              },
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _distanceController,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
+              const SizedBox(height: 18),
+              TextField(
+                controller: _nameController,
+                decoration: InputDecoration(
+                  labelText: 'Distance name',
+                  hintText: 'Example: Full Distance or Alternate Distance',
+                  errorText: _validationMessage,
+                ),
+                onChanged: (_) {
+                  if (_validationMessage == null) {
+                    return;
+                  }
+                  setState(() {
+                    _validationMessage = null;
+                  });
+                },
               ),
-              decoration: const InputDecoration(
-                labelText: 'Distance in miles',
-                hintText: 'Example: 5 or 4.4',
+              const SizedBox(height: 16),
+              TextField(
+                controller: _distanceController,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'Distance in miles',
+                  hintText: 'Example: 5 or 4.4',
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            SwitchListTile(
-              value: _isPrimary,
-              onChanged: (value) {
-                setState(() {
-                  _isPrimary = value;
-                });
-              },
-              title: const Text('Primary distance'),
-              subtitle: const Text(
-                'Imported and walk-up runners default to this distance.',
+              const SizedBox(height: 16),
+              SwitchListTile(
+                value: _isPrimary,
+                onChanged: (value) {
+                  setState(() {
+                    _isPrimary = value;
+                  });
+                },
+                title: const Text('Primary distance'),
+                subtitle: const Text(
+                  'Imported and walk-up runners default to this distance.',
+                ),
+                contentPadding: EdgeInsets.zero,
               ),
-              contentPadding: EdgeInsets.zero,
-            ),
-          ],
+            ],
+          ),
         ),
       ),
       actions: [

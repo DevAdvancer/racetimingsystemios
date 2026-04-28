@@ -31,18 +31,17 @@
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>RaceTimerApp uses Bluetooth to discover and connect to the Brother label printer.</string>
+	<string>This app connects to Brother printers via Bluetooth.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
-	<string>RaceTimerApp uses Bluetooth to discover and connect to the Brother label printer.</string>
+	<string>This app connects to Brother printers via Bluetooth.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_pdl-datastream._tcp</string>
 		<string>_printer._tcp</string>
 		<string>_ipp._tcp</string>
-		<string>_brother._tcp</string>
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>RaceTimerApp uses your local network to talk to the Brother label printer.</string>
+	<string>This app connects to Brother printers on your local network.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

@@ -4,7 +4,7 @@ import 'package:race_timer/models/race_result.dart';
 import 'package:race_timer/widgets/results_table.dart';
 
 void main() {
-  testWidgets('ResultsTable shows only finishers in finish order', (
+  testWidgets('ResultsTable shows started runners and finishers', (
     tester,
   ) async {
     final rows = <RaceResultRow>[
@@ -16,6 +16,18 @@ void main() {
         barcodeValue: 'RT-000001',
         checkedInAt: null,
         startTime: null,
+        earlyStart: false,
+        finishTime: null,
+        elapsedTimeMs: null,
+      ),
+      RaceResultRow(
+        entryId: 4,
+        runnerId: 4,
+        raceId: 1,
+        runnerName: 'Started Runner',
+        barcodeValue: 'RT-000004',
+        checkedInAt: null,
+        startTime: DateTime.utc(2026, 3, 24, 0, 0, 1),
         earlyStart: false,
         finishTime: null,
         elapsedTimeMs: null,
@@ -55,8 +67,12 @@ void main() {
     );
 
     expect(find.text('Registered Runner'), findsNothing);
+    expect(find.text('Started Runner'), findsOneWidget);
     expect(find.text('First Finisher'), findsOneWidget);
     expect(find.text('Early Starter'), findsOneWidget);
     expect(find.text('Early Start'), findsOneWidget);
+    expect(find.text('Start Time'), findsOneWidget);
+    expect(find.text('End Time'), findsOneWidget);
+    expect(find.text('Total'), findsOneWidget);
   });
 }

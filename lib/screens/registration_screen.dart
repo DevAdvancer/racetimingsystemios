@@ -54,6 +54,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
   Widget build(BuildContext context) {
     final raceAsync = ref.watch(currentRaceProvider);
     final race = raceAsync.asData?.value;
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
     if (!_didRequestInitialKeyboard) {
       _didRequestInitialKeyboard = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -70,8 +71,10 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
           children: [
             const Positioned.fill(child: _KioskBackdrop()),
             Positioned.fill(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(32, 24, 32, 24),
+              child: AnimatedPadding(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOut,
+                padding: EdgeInsets.fromLTRB(32, 24, 32, 24 + bottomInset),
                 child: LayoutBuilder(
                   builder: (context, constraints) {
                     return Center(
@@ -129,13 +132,15 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
         suggestionMatches.isEmpty;
     final isWideLayout = constraints.maxWidth >= 1080;
     final panelGap = isWideLayout ? 20.0 : 16.0;
-    final entryPanelHeight = previewMatch == null ? 182.0 : 246.0;
+    final entryPanelHeight = previewMatch == null
+        ? (isWideLayout ? 182.0 : 172.0)
+        : (isWideLayout ? 238.0 : 228.0);
     final actionPanelHeight = isWideLayout
         ? (constraints.maxHeight * 0.14).clamp(102.0, 126.0)
         : 110.0;
     final keyboardPanelHeight = isWideLayout
-        ? (constraints.maxHeight * 0.4).clamp(280.0, 360.0)
-        : 300.0;
+        ? (constraints.maxHeight * 0.28).clamp(220.0, 280.0)
+        : (constraints.maxHeight * 0.34).clamp(230.0, 290.0);
 
     final suggestionPanel = _KioskSuggestionPanel(
       key: ValueKey<String>('suggestions-$normalizedTypedName'),
@@ -150,7 +155,6 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
       context,
       isWideLayout: isWideLayout,
     );
-
     final feedbackPanel = AnimatedSwitcher(
       duration: const Duration(milliseconds: 220),
       child: _feedback == null
@@ -178,7 +182,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
               child: _buildPrintActionButton(context, race, previewMatch),
             ),
             SizedBox(height: panelGap),
-            SizedBox(height: 320, child: suggestionPanel),
+            SizedBox(height: 280, child: suggestionPanel),
             SizedBox(height: panelGap),
             SizedBox(height: keyboardPanelHeight, child: keyboardPanel),
             if (_feedback != null) ...[
@@ -251,23 +255,25 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
   }) {
     return _KioskPanelShell(
       padding: EdgeInsets.fromLTRB(
-        isWideLayout ? 24 : 18,
         isWideLayout ? 20 : 16,
-        isWideLayout ? 24 : 18,
+        isWideLayout ? 16 : 14,
         isWideLayout ? 20 : 16,
+        isWideLayout ? 16 : 14,
       ),
-      child: Align(
-        alignment: Alignment.bottomCenter,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1120),
-          child: _KioskLetterPad(
-            largeLayout: isWideLayout,
-            enabled: !_isSubmitting,
-            onLetterPressed: _insertKeyboardLetter,
-            onPunctuationPressed: _appendKeyboardCharacter,
-            onSpacePressed: _appendKeyboardSpace,
-            onBackspacePressed: _removeLastCharacter,
-            onClearPressed: _clearTypedName,
+      child: SingleChildScrollView(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1120),
+            child: _KioskQwertyPad(
+              largeLayout: isWideLayout,
+              enabled: !_isSubmitting,
+              onLetterPressed: _insertKeyboardLetter,
+              onPunctuationPressed: _appendKeyboardCharacter,
+              onSpacePressed: _appendKeyboardSpace,
+              onBackspacePressed: _removeLastCharacter,
+              onClearPressed: _clearTypedName,
+              onDonePressed: _handlePrint,
+            ),
           ),
         ),
       ),
@@ -348,7 +354,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
                   enableSuggestions: false,
                   autocorrect: false,
                   style: theme.textTheme.displaySmall?.copyWith(
-                    fontSize: compact ? 26 : 30,
+                    fontSize: compact ? 24 : 28,
                     fontWeight: FontWeight.w800,
                   ),
                   onTap: _focusNameField,
@@ -427,6 +433,7 @@ class _RegistrationScreenState extends ConsumerState<RegistrationScreen> {
                         child: Text(
                           'Print Barcode',
                           style: theme.textTheme.headlineSmall?.copyWith(
+                            color: theme.colorScheme.onPrimary,
                             fontSize: compact ? 21 : 24,
                             fontWeight: FontWeight.w700,
                           ),
@@ -1020,7 +1027,7 @@ class _KioskSuggestionPanelState extends State<_KioskSuggestionPanel> {
                 if (!widget.raceReady) {
                   return const _CenteredRosterMessage(
                     message:
-                        'Select today\'s race in organizer setup to load the runner roster.',
+                        'Choose a race in organizer setup to load the runner roster.',
                   );
                 }
 
@@ -1128,8 +1135,8 @@ class _KioskSuggestionPanelState extends State<_KioskSuggestionPanel> {
   }
 }
 
-class _KioskLetterPad extends StatelessWidget {
-  const _KioskLetterPad({
+class _KioskQwertyPad extends StatelessWidget {
+  const _KioskQwertyPad({
     required this.largeLayout,
     required this.enabled,
     required this.onLetterPressed,
@@ -1137,35 +1144,13 @@ class _KioskLetterPad extends StatelessWidget {
     required this.onSpacePressed,
     required this.onBackspacePressed,
     required this.onClearPressed,
+    required this.onDonePressed,
   });
 
-  static const List<String> _letters = <String>[
-    'A',
-    'B',
-    'C',
-    'D',
-    'E',
-    'F',
-    'G',
-    'H',
-    'I',
-    'J',
-    'K',
-    'L',
-    'M',
-    'N',
-    'O',
-    'P',
-    'Q',
-    'R',
-    'S',
-    'T',
-    'U',
-    'V',
-    'W',
-    'X',
-    'Y',
-    'Z',
+  static const List<List<String>> _rows = <List<String>>[
+    <String>['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
+    <String>['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'],
+    <String>['Z', 'X', 'C', 'V', 'B', 'N', 'M'],
   ];
 
   final bool largeLayout;
@@ -1175,71 +1160,146 @@ class _KioskLetterPad extends StatelessWidget {
   final VoidCallback onSpacePressed;
   final VoidCallback onBackspacePressed;
   final VoidCallback onClearPressed;
+  final VoidCallback onDonePressed;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final keyWidth = largeLayout ? 72.0 : 64.0;
-    final keyHeight = largeLayout ? 60.0 : 54.0;
-    final spacing = largeLayout ? 12.0 : 10.0;
-    final titleSpacing = largeLayout ? 16.0 : 12.0;
     final labelStyle = theme.textTheme.titleLarge?.copyWith(
       fontSize: largeLayout ? 22 : 18,
       fontWeight: FontWeight.w700,
-      color: colorScheme.onSurface,
     );
+    final keyHeight = largeLayout ? 50.0 : 46.0;
+    final keyWidth = largeLayout ? 72.0 : 60.0;
+    final rowSpacing = largeLayout ? 10.0 : 8.0;
+    final keySpacing = largeLayout ? 10.0 : 8.0;
+    final rowInset = largeLayout ? 28.0 : 20.0;
+    final thirdRowSpecialWidth = largeLayout ? 104.0 : 88.0;
+    final bottomKeyWidth = largeLayout ? 126.0 : 108.0;
+    final punctuationWidth = largeLayout ? 86.0 : 72.0;
+    final spaceWidth = largeLayout ? 320.0 : 250.0;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Text('Kiosk keyboard', textAlign: TextAlign.center, style: labelStyle),
-        SizedBox(height: titleSpacing),
-        Wrap(
-          alignment: WrapAlignment.center,
-          spacing: spacing,
-          runSpacing: spacing,
-          children: [
-            for (final letter in _letters)
+        Text('Kiosk keyboard', style: labelStyle),
+        SizedBox(height: largeLayout ? 14 : 10),
+        Padding(
+          padding: EdgeInsets.only(bottom: rowSpacing),
+          child: _buildLetterRow(
+            _rows[0],
+            keyWidth: keyWidth,
+            keyHeight: keyHeight,
+            keySpacing: keySpacing,
+          ),
+        ),
+        Padding(
+          padding: EdgeInsets.only(bottom: rowSpacing),
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: rowInset),
+            child: _buildLetterRow(
+              _rows[1],
+              keyWidth: keyWidth,
+              keyHeight: keyHeight,
+              keySpacing: keySpacing,
+            ),
+          ),
+        ),
+        Padding(
+          padding: EdgeInsets.only(bottom: rowSpacing),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
               _KioskKeyboardKey(
-                label: letter,
-                width: keyWidth,
+                label: 'Clear',
+                icon: Icons.clear_all_rounded,
+                width: thirdRowSpecialWidth,
                 height: keyHeight,
-                onPressed: enabled ? () => onLetterPressed(letter) : null,
+                onPressed: enabled ? onClearPressed : null,
+                isSpecial: true,
               ),
+              SizedBox(width: keySpacing),
+              _buildLetterRow(
+                _rows[2],
+                keyWidth: keyWidth,
+                keyHeight: keyHeight,
+                keySpacing: keySpacing,
+                mainAxisSize: MainAxisSize.min,
+              ),
+              SizedBox(width: keySpacing),
+              _KioskKeyboardKey(
+                label: 'Backspace',
+                icon: Icons.backspace_outlined,
+                width: thirdRowSpecialWidth,
+                height: keyHeight,
+                onPressed: enabled ? onBackspacePressed : null,
+                isSpecial: true,
+              ),
+            ],
+          ),
+        ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
             _KioskKeyboardKey(
               label: '\'',
-              width: keyWidth,
+              width: punctuationWidth,
               height: keyHeight,
               onPressed: enabled ? () => onPunctuationPressed('\'') : null,
+              isSpecial: true,
             ),
+            SizedBox(width: keySpacing),
             _KioskKeyboardKey(
               label: '-',
-              width: keyWidth,
+              width: punctuationWidth,
               height: keyHeight,
               onPressed: enabled ? () => onPunctuationPressed('-') : null,
+              isSpecial: true,
             ),
+            SizedBox(width: keySpacing),
             _KioskKeyboardKey(
               label: 'Space',
-              width: largeLayout ? 180 : 152,
+              icon: Icons.space_bar,
+              width: spaceWidth,
               height: keyHeight,
               onPressed: enabled ? onSpacePressed : null,
+              isSpecial: true,
             ),
+            SizedBox(width: keySpacing),
             _KioskKeyboardKey(
-              label: 'Backspace',
-              width: largeLayout ? 196 : 170,
+              label: 'Done',
+              icon: Icons.keyboard_return_rounded,
+              width: bottomKeyWidth,
               height: keyHeight,
-              onPressed: enabled ? onBackspacePressed : null,
-            ),
-            _KioskKeyboardKey(
-              label: 'Clear',
-              width: largeLayout ? 140 : 118,
-              height: keyHeight,
-              onPressed: enabled ? onClearPressed : null,
+              onPressed: enabled ? onDonePressed : null,
+              isSpecial: true,
             ),
           ],
         ),
+      ],
+    );
+  }
+
+  Widget _buildLetterRow(
+    List<String> letters, {
+    required double keyWidth,
+    required double keyHeight,
+    required double keySpacing,
+    MainAxisSize mainAxisSize = MainAxisSize.max,
+  }) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisSize: mainAxisSize,
+      children: [
+        for (var index = 0; index < letters.length; index++) ...[
+          _KioskKeyboardKey(
+            label: letters[index],
+            width: keyWidth,
+            height: keyHeight,
+            onPressed: enabled ? () => onLetterPressed(letters[index]) : null,
+          ),
+          if (index != letters.length - 1) SizedBox(width: keySpacing),
+        ],
       ],
     );
   }
@@ -1249,14 +1309,18 @@ class _KioskKeyboardKey extends StatelessWidget {
   const _KioskKeyboardKey({
     required this.label,
     required this.onPressed,
-    this.width = 56,
-    this.height = 46,
+    required this.width,
+    required this.height,
+    this.icon,
+    this.isSpecial = false,
   });
 
   final String label;
   final VoidCallback? onPressed;
   final double width;
   final double height;
+  final IconData? icon;
+  final bool isSpecial;
 
   @override
   Widget build(BuildContext context) {
@@ -1266,13 +1330,31 @@ class _KioskKeyboardKey extends StatelessWidget {
       child: FilledButton.tonal(
         onPressed: onPressed,
         style: FilledButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          backgroundColor: isSpecial
+              ? Theme.of(context).colorScheme.surfaceContainerHigh
+              : null,
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
           textStyle: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontSize: height >= 60 ? 22 : 18,
+            fontSize: height >= 50 ? 20 : 17,
             fontWeight: FontWeight.w700,
           ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(isSpecial ? 12 : 10),
+          ),
         ),
-        child: FittedBox(fit: BoxFit.scaleDown, child: Text(label)),
+        child: icon == null
+            ? FittedBox(fit: BoxFit.scaleDown, child: Text(label))
+            : FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(icon, size: height >= 52 ? 22 : 20),
+                    const SizedBox(width: 6),
+                    Text(label),
+                  ],
+                ),
+              ),
       ),
     );
   }

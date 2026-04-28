@@ -31,15 +31,17 @@ enum PrinterConnectionType {
   String get storageValue => name;
 
   String get targetFieldLabel => switch (this) {
-    PrinterConnectionType.bluetooth => 'Printer Bluetooth name or MAC address',
-    PrinterConnectionType.network => 'Printer IP address or hostname',
+    PrinterConnectionType.bluetooth =>
+      'Printer Bluetooth name, serial number, or MAC address',
+    PrinterConnectionType.network =>
+      'Printer IP address, hostname, or discovery name',
   };
 
   String get targetHelpText => switch (this) {
     PrinterConnectionType.bluetooth =>
-      'Enter the Brother QL-820NWB Bluetooth name or MAC address manually. This saves the target for this iPad.',
+      'Enter the Brother QL-820NWB Bluetooth name, serial number, or MAC address manually. Discovery names such as QL-820NWB1997 still map to the QL-820NWB model.',
     PrinterConnectionType.network =>
-      'Use the Brother printer IP address or hostname, or leave it blank so the iPad can auto-discover the printer on the current Wi-Fi network.',
+      'Use Wi-Fi first. Enter the Brother printer IP address or hostname, or leave it blank so the iPad can auto-discover the current QL-820NWB printer on the local network.',
   };
 
   bool get allowsAutoDiscovery => this == PrinterConnectionType.network;
@@ -84,7 +86,7 @@ class AppSettings {
     return const AppSettings(
       themeMode: AppThemeMode.light,
       dryRunMode: false,
-      printerHost: '',
+      printerHost: AppConstants.defaultPrinterHost,
       printerMedia: AppConstants.defaultPrinterMedia,
       printerConnectionType: PrinterConnectionType.network,
       adminPasscode: '123',

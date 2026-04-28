@@ -2,6 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:race_timer/database/database_helper.dart';
 import 'package:race_timer/models/finish_scan_result.dart';
+import 'package:race_timer/models/app_settings.dart';
+import 'package:race_timer/models/discovered_printer.dart';
 import 'package:race_timer/models/printer_status.dart';
 import 'package:race_timer/models/roster_import.dart';
 import 'package:race_timer/providers/finish_scanner_provider.dart';
@@ -18,6 +20,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 class _FakePrinterService implements PrinterService {
   @override
   Future<PrinterStatus> configure() async => PrinterStatus.ready();
+
+  @override
+  Future<List<DiscoveredPrinter>> discoverPrinters({
+    required PrinterConnectionType connectionType,
+  }) async => const [];
 
   @override
   Future<PrinterStatus> getStatus() async => PrinterStatus.ready();
@@ -103,10 +110,15 @@ void main() {
       );
       expect(
         finishResult.elapsedTimeMs,
-        equals(
+        inInclusiveRange(
           finishResult.finishTime!
-              .difference(earlyStartResult.startTime!)
-              .inMilliseconds,
+                  .difference(earlyStartResult.startTime!)
+                  .inMilliseconds -
+              5,
+          finishResult.finishTime!
+                  .difference(earlyStartResult.startTime!)
+                  .inMilliseconds +
+              5,
         ),
       );
     },

@@ -549,7 +549,7 @@ class ExportService {
                   style: pw.TextStyle(fontSize: 11),
                 ),
                 pw.Text(
-                  '4. Global Stop still happens from Race Control when finish scanning is done.',
+                  '4. Global Stop still happens from Race Timing when finish scanning is done.',
                   style: pw.TextStyle(fontSize: 11),
                 ),
               ],

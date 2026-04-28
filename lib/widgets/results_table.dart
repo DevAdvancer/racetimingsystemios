@@ -10,9 +10,26 @@ class ResultsTable extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final finishers = results
-        .where((row) => row.finishTime != null)
+    final visibleRows = results
+        .where((row) => row.startTime != null || row.finishTime != null)
         .toList(growable: false);
+    visibleRows.sort((left, right) {
+      final leftFinish = left.finishTime;
+      final rightFinish = right.finishTime;
+      if (leftFinish != null && rightFinish != null) {
+        final comparison = leftFinish.compareTo(rightFinish);
+        return comparison == 0
+            ? left.entryId.compareTo(right.entryId)
+            : comparison;
+      }
+      if (leftFinish != null) {
+        return -1;
+      }
+      if (rightFinish != null) {
+        return 1;
+      }
+      return left.entryId.compareTo(right.entryId);
+    });
 
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -49,7 +66,7 @@ class ResultsTable extends StatelessWidget {
                 Expanded(
                   flex: 2,
                   child: Text(
-                    'Finish Time',
+                    'Start Time',
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
@@ -58,7 +75,16 @@ class ResultsTable extends StatelessWidget {
                 Expanded(
                   flex: 2,
                   child: Text(
-                    'Elapsed',
+                    'End Time',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  flex: 2,
+                  child: Text(
+                    'Total',
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
@@ -68,21 +94,24 @@ class ResultsTable extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: finishers.isEmpty
+            child: visibleRows.isEmpty
                 ? Center(
                     child: Text(
-                      'No finishers recorded yet.',
+                      'No runners started yet.',
                       style: theme.textTheme.titleMedium,
                     ),
                   )
                 : ListView.separated(
-                    itemCount: finishers.length,
+                    itemCount: visibleRows.length,
                     separatorBuilder: (context, index) => Divider(
                       height: 1,
                       color: theme.colorScheme.outlineVariant,
                     ),
                     itemBuilder: (context, index) {
-                      final row = finishers[index];
+                      final row = visibleRows[index];
+                      final place = row.finishTime == null
+                          ? '--'
+                          : '${visibleRows.take(index).where((row) => row.finishTime != null).length + 1}';
                       return Padding(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 20,
@@ -92,7 +121,7 @@ class ResultsTable extends StatelessWidget {
                           children: [
                             Expanded(
                               child: Text(
-                                '${index + 1}',
+                                place,
                                 style: theme.textTheme.titleLarge?.copyWith(
                                   fontWeight: FontWeight.w700,
                                 ),
@@ -131,6 +160,15 @@ class ResultsTable extends StatelessWidget {
                                     ),
                                   ],
                                 ],
+                              ),
+                            ),
+                            Expanded(
+                              flex: 2,
+                              child: Text(
+                                RaceService.formatFinishTime(row.startTime),
+                                style: theme.textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ),
                             Expanded(

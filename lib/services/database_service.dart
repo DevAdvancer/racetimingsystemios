@@ -855,8 +855,7 @@ class DatabaseService {
     final db = await _resolveExecutor(executor);
     final rows = await db.query(
       'race_entries',
-      where:
-          'race_id = ? AND checked_in_at IS NOT NULL AND finish_time IS NULL',
+      where: 'race_id = ? AND finish_time IS NULL',
       whereArgs: <Object?>[raceId],
       orderBy: 'id ASC',
     );
@@ -873,7 +872,6 @@ class DatabaseService {
       SELECT COUNT(*) AS unfinished_count
       FROM race_entries
       WHERE race_id = ?
-        AND checked_in_at IS NOT NULL
         AND finish_time IS NULL;
       ''',
       <Object?>[raceId],
@@ -1169,12 +1167,13 @@ class DatabaseService {
         race_distance_configs.name AS distance_name,
         race_distance_configs.distance_miles AS distance_miles,
         race_entries.checked_in_at AS checked_in_at,
-        race_entries.start_time AS start_time,
+        COALESCE(race_entries.start_time, races.gun_time) AS start_time,
         race_entries.early_start AS early_start,
         race_entries.finish_time AS finish_time,
         race_entries.elapsed_time_ms AS elapsed_time_ms
       FROM race_entries
       INNER JOIN runners ON runners.id = race_entries.runner_id
+      INNER JOIN races ON races.id = race_entries.race_id
       LEFT JOIN race_distance_configs
         ON race_distance_configs.id = race_entries.race_distance_id
       WHERE race_entries.race_id = ?

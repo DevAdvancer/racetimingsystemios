@@ -69,6 +69,7 @@ class _UserDialogShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final mediaSize = MediaQuery.sizeOf(context);
     final colorScheme = Theme.of(context).colorScheme;
     final palette = switch (tone) {
       UserDialogTone.info => (
@@ -94,7 +95,10 @@ class _UserDialogShell extends StatelessWidget {
     };
 
     return AlertDialog(
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      insetPadding: EdgeInsets.symmetric(
+        horizontal: mediaSize.width < 700 ? 16 : 24,
+        vertical: mediaSize.height < 900 ? 16 : 24,
+      ),
       titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
       contentPadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
       actionsPadding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
@@ -119,11 +123,19 @@ class _UserDialogShell extends StatelessWidget {
           ),
         ],
       ),
-      content: Text(
-        message,
-        style: Theme.of(
-          context,
-        ).textTheme.bodyLarge?.copyWith(color: colorScheme.onSurfaceVariant),
+      content: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: mediaSize.width < 700 ? mediaSize.width - 56 : 520,
+          maxHeight: mediaSize.height * 0.5,
+        ),
+        child: SingleChildScrollView(
+          child: Text(
+            message,
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
       ),
       actions: actions,
     );

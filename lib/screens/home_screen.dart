@@ -30,15 +30,15 @@ class HomeScreen extends ConsumerWidget {
         title: const BrandAppBarTitle(pageTitle: 'Choose Race'),
         actions: [
           IconButton(
-            tooltip: 'Return to start screen',
+            tooltip: 'Runner Kiosk',
             onPressed: () {
+              context.go(AppRoutes.registration);
               ref.read(adminAccessProvider.notifier).lock();
-              context.go(AppRoutes.home);
             },
-            icon: const Icon(Icons.lock_outline),
+            icon: const Icon(Icons.badge_outlined),
           ),
           PopupMenuButton<String>(
-            onSelected: (value) => context.push(value),
+            onSelected: (value) => context.go(value),
             itemBuilder: (context) => const [
               PopupMenuItem(
                 value: AppRoutes.setup,
@@ -54,20 +54,14 @@ class HomeScreen extends ConsumerWidget {
           padding: const EdgeInsets.all(24),
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final stackedLayout =
-                  constraints.maxHeight < 900 || constraints.maxWidth < 1400;
-
-              final heroPanel = _HeroPanel(
-                selectedRaceId: selectedRaceId,
-                onCreateRace: () => _showCreateRaceDialog(context, ref),
-                onBulkRaceTools: () => _showBulkRaceToolsDialog(context, ref),
-                onOpenSelectedRace: selectedRaceId == null
-                    ? null
-                    : () => context.go(AppRoutes.raceDashboard),
-              );
+              final stackedLayout = constraints.maxWidth < 900;
+              final scrollLayout = stackedLayout || constraints.maxHeight < 900;
+              final chooseRaceHeight = (constraints.maxHeight * 0.46)
+                  .clamp(300, 360)
+                  .toDouble();
 
               final overallSection = racesAsync.when(
-                data: (races) => stackedLayout
+                data: (races) => scrollLayout
                     ? _OverallPointsSection(
                         races: races,
                         onAdjustPoints: () =>
@@ -76,7 +70,7 @@ class HomeScreen extends ConsumerWidget {
                             _exportOverallPoints(context, ref, races),
                       )
                     : SizedBox(
-                        height: 360,
+                        height: 420,
                         child: _OverallPointsSection(
                           races: races,
                           fillHeight: true,
@@ -98,11 +92,11 @@ class HomeScreen extends ConsumerWidget {
                 ),
               );
 
-              final raceList = racesAsync.when(
-                data: (races) => _RaceListSection(
+              final chooseRaceLayout = racesAsync.when(
+                data: (races) => _ChooseRaceLayout(
                   races: races,
                   selectedRaceId: selectedRaceId,
-                  expandToFill: !stackedLayout,
+                  stacked: stackedLayout,
                   onCreateRace: () => _showCreateRaceDialog(context, ref),
                   onBulkRaceTools: () => _showBulkRaceToolsDialog(context, ref),
                   onOpenRace: (race) async {
@@ -136,12 +130,16 @@ class HomeScreen extends ConsumerWidget {
                 ),
               );
 
-              if (stackedLayout) {
+              if (scrollLayout) {
                 return ListView(
                   children: [
-                    heroPanel,
-                    const SizedBox(height: 24),
-                    raceList,
+                    if (stackedLayout)
+                      chooseRaceLayout
+                    else
+                      SizedBox(
+                        height: chooseRaceHeight,
+                        child: chooseRaceLayout,
+                      ),
                     const SizedBox(height: 24),
                     overallSection,
                   ],
@@ -151,11 +149,9 @@ class HomeScreen extends ConsumerWidget {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  heroPanel,
+                  SizedBox(height: chooseRaceHeight, child: chooseRaceLayout),
                   const SizedBox(height: 24),
                   overallSection,
-                  const SizedBox(height: 24),
-                  Expanded(child: raceList),
                 ],
               );
             },
@@ -298,6 +294,205 @@ class HomeScreen extends ConsumerWidget {
   }
 }
 
+class _ChooseRaceLayout extends StatelessWidget {
+  const _ChooseRaceLayout({
+    required this.races,
+    required this.selectedRaceId,
+    required this.stacked,
+    required this.onCreateRace,
+    required this.onBulkRaceTools,
+    required this.onOpenRace,
+  });
+
+  final List<Race> races;
+  final int? selectedRaceId;
+  final bool stacked;
+  final VoidCallback onCreateRace;
+  final VoidCallback onBulkRaceTools;
+  final ValueChanged<Race> onOpenRace;
+
+  @override
+  Widget build(BuildContext context) {
+    final racePanel = _RaceChoicePanel(
+      races: races,
+      selectedRaceId: selectedRaceId,
+      expandToFill: !stacked,
+      onCreateRace: onCreateRace,
+      onBulkRaceTools: onBulkRaceTools,
+      onOpenRace: onOpenRace,
+    );
+    final actions = _RaceActionPanel(
+      stacked: stacked,
+      onCreateRace: onCreateRace,
+      onBulkRaceTools: onBulkRaceTools,
+    );
+
+    if (stacked) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [actions, const SizedBox(height: 18), racePanel],
+      );
+    }
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(flex: 11, child: racePanel),
+        const SizedBox(width: 28),
+        Expanded(flex: 10, child: actions),
+      ],
+    );
+  }
+}
+
+class _RaceActionPanel extends StatelessWidget {
+  const _RaceActionPanel({
+    required this.stacked,
+    required this.onCreateRace,
+    required this.onBulkRaceTools,
+  });
+
+  final bool stacked;
+  final VoidCallback onCreateRace;
+  final VoidCallback onBulkRaceTools;
+
+  @override
+  Widget build(BuildContext context) {
+    if (stacked) {
+      return Wrap(
+        spacing: 14,
+        runSpacing: 14,
+        children: [
+          SizedBox(
+            height: 84,
+            width: 320,
+            child: _LargeRaceActionButton(
+              label: 'Create Race',
+              icon: Icons.add_circle_outline,
+              filled: true,
+              onPressed: onCreateRace,
+            ),
+          ),
+          SizedBox(
+            height: 84,
+            width: 320,
+            child: _LargeRaceActionButton(
+              label: 'Import Race Schedule',
+              icon: Icons.upload_file_outlined,
+              onPressed: onBulkRaceTools,
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: 92,
+          child: _LargeRaceActionButton(
+            label: 'Create Race',
+            icon: Icons.add_circle_outline,
+            filled: true,
+            onPressed: onCreateRace,
+          ),
+        ),
+        const SizedBox(height: 32),
+        Expanded(
+          child: _LargeRaceActionButton(
+            label: 'Import Race Schedule',
+            icon: Icons.upload_file_outlined,
+            onPressed: onBulkRaceTools,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _LargeRaceActionButton extends StatelessWidget {
+  const _LargeRaceActionButton({
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+    this.filled = false,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback onPressed;
+  final bool filled;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = (filled ? FilledButton.styleFrom : OutlinedButton.styleFrom)(
+      textStyle: Theme.of(
+        context,
+      ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
+    );
+
+    if (filled) {
+      return FilledButton.icon(
+        onPressed: onPressed,
+        style: style,
+        icon: Icon(icon, size: 30),
+        label: Text(label, textAlign: TextAlign.center),
+      );
+    }
+
+    return OutlinedButton.icon(
+      onPressed: onPressed,
+      style: style,
+      icon: Icon(icon, size: 30),
+      label: Text(label, textAlign: TextAlign.center),
+    );
+  }
+}
+
+class _RaceChoicePanel extends StatelessWidget {
+  const _RaceChoicePanel({
+    required this.races,
+    required this.selectedRaceId,
+    required this.expandToFill,
+    required this.onCreateRace,
+    required this.onBulkRaceTools,
+    required this.onOpenRace,
+  });
+
+  final List<Race> races;
+  final int? selectedRaceId;
+  final bool expandToFill;
+  final VoidCallback onCreateRace;
+  final VoidCallback onBulkRaceTools;
+  final ValueChanged<Race> onOpenRace;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(22, 16, 22, 22),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: colorScheme.primary, width: 1.8),
+      ),
+      child: _RaceListSection(
+        races: races,
+        selectedRaceId: selectedRaceId,
+        expandToFill: expandToFill,
+        onCreateRace: onCreateRace,
+        onBulkRaceTools: onBulkRaceTools,
+        onOpenRace: onOpenRace,
+      ),
+    );
+  }
+}
+
 class _CreateRaceDialog extends StatefulWidget {
   const _CreateRaceDialog();
 
@@ -335,135 +530,51 @@ class _CreateRaceDialogState extends State<_CreateRaceDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final mediaSize = MediaQuery.sizeOf(context);
     return AlertDialog(
       title: const Text('Create a New Race'),
-      content: SizedBox(
-        width: 420,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Type the race name exactly how volunteers should see it on the tablet.',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _controller,
-              focusNode: _focusNode,
-              autofocus: true,
-              decoration: InputDecoration(
-                labelText: 'Race name',
-                hintText: 'Example: Saturday Park Run',
-                errorText: _validationMessage,
+      content: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: mediaSize.width < 700 ? mediaSize.width - 56 : 420,
+          maxHeight: mediaSize.height * 0.7,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Type the race name exactly how volunteers should see it on the tablet.',
+                style: Theme.of(context).textTheme.bodyMedium,
               ),
-              onChanged: (value) {
-                if (_validationMessage == null || value.trim().isEmpty) {
-                  return;
-                }
-                setState(() {
-                  _validationMessage = null;
-                });
-              },
-              onSubmitted: (_) => _submit(),
-            ),
-          ],
+              const SizedBox(height: 16),
+              TextField(
+                controller: _controller,
+                focusNode: _focusNode,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: 'Race name',
+                  hintText: 'Example: Saturday Park Run',
+                  errorText: _validationMessage,
+                ),
+                onChanged: (value) {
+                  if (_validationMessage == null || value.trim().isEmpty) {
+                    return;
+                  }
+                  setState(() {
+                    _validationMessage = null;
+                  });
+                },
+                onSubmitted: (_) => _submit(),
+              ),
+            ],
+          ),
         ),
       ),
       actions: [
         TextButton(onPressed: _close, child: const Text('Cancel')),
         FilledButton(onPressed: _submit, child: const Text('Create Race')),
       ],
-    );
-  }
-}
-
-class _HeroPanel extends StatelessWidget {
-  const _HeroPanel({
-    required this.selectedRaceId,
-    required this.onCreateRace,
-    required this.onBulkRaceTools,
-    required this.onOpenSelectedRace,
-  });
-
-  final int? selectedRaceId;
-  final VoidCallback onCreateRace;
-  final VoidCallback onBulkRaceTools;
-  final VoidCallback? onOpenSelectedRace;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(28),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(32),
-        gradient: LinearGradient(
-          colors: <Color>[
-            colorScheme.primaryContainer,
-            colorScheme.tertiaryContainer.withValues(alpha: 0.72),
-            Theme.of(context).scaffoldBackgroundColor,
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        border: Border.all(color: colorScheme.outlineVariant),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x55000000),
-            blurRadius: 24,
-            offset: Offset(0, 14),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Choose Race', style: theme.textTheme.headlineLarge),
-          const SizedBox(height: 10),
-          Text(
-            'Create a race or choose an existing race, then open Race Day Console when volunteers are ready.',
-            style: theme.textTheme.bodyLarge,
-          ),
-          const SizedBox(height: 18),
-          StatusBanner(
-            title: selectedRaceId == null
-                ? 'Choose a race to begin'
-                : 'Race selected',
-            message: selectedRaceId == null
-                ? 'Once a race is selected, volunteers can check in runners, record the global start, and scan runner barcodes for early starts and finishes.'
-                : 'The last selected race is ready to reopen from this dashboard.',
-            tone: selectedRaceId == null
-                ? StatusBannerTone.info
-                : StatusBannerTone.success,
-          ),
-          const SizedBox(height: 20),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              FilledButton.icon(
-                onPressed: onCreateRace,
-                icon: const Icon(Icons.add_circle_outline),
-                label: const Text('Create Race'),
-              ),
-              OutlinedButton.icon(
-                onPressed: onBulkRaceTools,
-                icon: const Icon(Icons.upload_file_outlined),
-                label: const Text('Import Race Schedule'),
-              ),
-              OutlinedButton.icon(
-                onPressed: onOpenSelectedRace,
-                icon: const Icon(Icons.arrow_forward),
-                label: const Text('Open Selected Race'),
-              ),
-            ],
-          ),
-        ],
-      ),
     );
   }
 }
@@ -575,17 +686,20 @@ class _OverallPointsContent extends StatelessWidget {
         runSpacing: 12,
         children: [
           OutlinedButton.icon(
-            onPressed: () => context.push(AppRoutes.overallPoints),
+            onPressed: () => context.go(AppRoutes.overallPoints),
+            style: _overallActionButtonStyle(context),
             icon: const Icon(Icons.table_chart_outlined),
             label: const Text('View Full Table'),
           ),
           FilledButton.icon(
             onPressed: races.isEmpty ? null : onAdjustPoints,
+            style: _overallActionButtonStyle(context),
             icon: const Icon(Icons.tune),
             label: const Text('Adjust Overall Points'),
           ),
           OutlinedButton.icon(
             onPressed: onExportPoints,
+            style: _overallActionButtonStyle(context),
             icon: const Icon(Icons.download_outlined),
             label: const Text('Export Overall Points'),
           ),
@@ -709,6 +823,20 @@ class _OverallPointsContent extends StatelessWidget {
   }
 }
 
+ButtonStyle _overallActionButtonStyle(BuildContext context) {
+  return ButtonStyle(
+    minimumSize: const WidgetStatePropertyAll(Size(0, 62)),
+    padding: const WidgetStatePropertyAll(
+      EdgeInsets.symmetric(horizontal: 22, vertical: 18),
+    ),
+    textStyle: WidgetStatePropertyAll(
+      Theme.of(
+        context,
+      ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w800),
+    ),
+  );
+}
+
 class _OverviewMetricTile extends StatelessWidget {
   const _OverviewMetricTile({required this.label, required this.value});
 
@@ -750,7 +878,7 @@ class _OverviewMetricTile extends StatelessWidget {
   }
 }
 
-class _RaceListSection extends StatelessWidget {
+class _RaceListSection extends StatefulWidget {
   const _RaceListSection({
     required this.races,
     required this.selectedRaceId,
@@ -768,20 +896,40 @@ class _RaceListSection extends StatelessWidget {
   final ValueChanged<Race> onOpenRace;
 
   @override
+  State<_RaceListSection> createState() => _RaceListSectionState();
+}
+
+class _RaceListSectionState extends State<_RaceListSection> {
+  final ScrollController _raceScrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _raceScrollController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (races.isEmpty) {
+    if (widget.races.isEmpty) {
       return _EmptyRaceState(
-        onCreateRace: onCreateRace,
-        onBulkRaceTools: onBulkRaceTools,
+        onCreateRace: widget.onCreateRace,
+        onBulkRaceTools: widget.onBulkRaceTools,
       );
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Available Races', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 16),
-        if (expandToFill)
+        Center(
+          child: Text(
+            'Choose active Race',
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (widget.expandToFill)
           Expanded(child: _buildRaceGrid())
         else
           _buildRaceGrid(),
@@ -798,24 +946,34 @@ class _RaceListSection extends StatelessWidget {
             ? 2
             : 1;
 
-        return GridView.builder(
-          shrinkWrap: !expandToFill,
-          physics: expandToFill ? null : const NeverScrollableScrollPhysics(),
-          itemCount: races.length,
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: crossAxisCount,
-            mainAxisSpacing: 16,
-            crossAxisSpacing: 16,
-            childAspectRatio: 1.35,
+        return Scrollbar(
+          controller: _raceScrollController,
+          thumbVisibility: true,
+          trackVisibility: true,
+          interactive: true,
+          child: GridView.builder(
+            controller: _raceScrollController,
+            primary: false,
+            shrinkWrap: !widget.expandToFill,
+            physics: widget.expandToFill
+                ? const AlwaysScrollableScrollPhysics()
+                : const NeverScrollableScrollPhysics(),
+            itemCount: widget.races.length,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: crossAxisCount,
+              mainAxisSpacing: 16,
+              crossAxisSpacing: 16,
+              childAspectRatio: 2.8,
+            ),
+            itemBuilder: (context, index) {
+              final race = widget.races[index];
+              return _RaceCard(
+                race: race,
+                isSelected: race.id == widget.selectedRaceId,
+                onTap: () => widget.onOpenRace(race),
+              );
+            },
           ),
-          itemBuilder: (context, index) {
-            final race = races[index];
-            return _RaceCard(
-              race: race,
-              isSelected: race.id == selectedRaceId,
-              onTap: () => onOpenRace(race),
-            );
-          },
         );
       },
     );
@@ -836,39 +994,37 @@ class _EmptyRaceState extends StatelessWidget {
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 640),
-        child: Card(
-          child: Padding(
-            padding: const EdgeInsets.all(28),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.flag_outlined, size: 52),
-                const SizedBox(height: 16),
-                Text(
-                  'No races have been created yet.',
-                  style: Theme.of(context).textTheme.headlineMedium,
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Tap Create Race to add the next event, then open that race dashboard to import runners or add a new runner.',
-                  style: Theme.of(context).textTheme.bodyLarge,
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 20),
-                FilledButton.icon(
-                  onPressed: onCreateRace,
-                  icon: const Icon(Icons.add_circle_outline),
-                  label: const Text('Create Race'),
-                ),
-                const SizedBox(height: 12),
-                OutlinedButton.icon(
-                  onPressed: onBulkRaceTools,
-                  icon: const Icon(Icons.upload_file_outlined),
-                  label: const Text('Import Race Schedule'),
-                ),
-              ],
-            ),
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.flag_outlined, size: 52),
+              const SizedBox(height: 16),
+              Text(
+                'No races have been created yet.',
+                style: Theme.of(context).textTheme.headlineMedium,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Tap Create Race to add the next event, then open that race dashboard to import runners or add a new runner.',
+                style: Theme.of(context).textTheme.bodyLarge,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 20),
+              OutlinedButton.icon(
+                onPressed: onCreateRace,
+                icon: const Icon(Icons.add_circle_outline),
+                label: const Text('Create Race'),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: onBulkRaceTools,
+                icon: const Icon(Icons.upload_file_outlined),
+                label: const Text('Import Race Schedule'),
+              ),
+            ],
           ),
         ),
       ),
@@ -1029,6 +1185,7 @@ class _AdjustOverallPointsDialogState
 
   @override
   Widget build(BuildContext context) {
+    final mediaSize = MediaQuery.sizeOf(context);
     final selectedRaceId = _selectedRaceId;
     final selectedRace = selectedRaceId == null
         ? null
@@ -1041,125 +1198,130 @@ class _AdjustOverallPointsDialogState
 
     return AlertDialog(
       title: const Text('Adjust Overall Points'),
-      content: SizedBox(
-        width: 520,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Choose a race and racer, then enter a positive or negative number to manually adjust the overall total.',
-              style: Theme.of(context).textTheme.bodyLarge,
-            ),
-            const SizedBox(height: 18),
-            DropdownButtonFormField<int>(
-              initialValue: _selectedRaceId,
-              decoration: const InputDecoration(labelText: 'Race'),
-              items: widget.races
-                  .map(
-                    (race) => DropdownMenuItem<int>(
-                      value: race.id,
-                      child: Text(race.name),
-                    ),
-                  )
-                  .toList(growable: false),
-              onChanged: _isSaving
-                  ? null
-                  : (value) {
-                      setState(() {
-                        _selectedRaceId = value;
-                        _selectedRunnerId = null;
-                        _validationMessage = null;
-                      });
-                    },
-            ),
-            const SizedBox(height: 16),
-            racerSummariesAsync.when(
-              data: (summaries) {
-                final availableRunnerId =
-                    _selectedRunnerId != null &&
-                        summaries.any(
-                          (row) => row.runnerId == _selectedRunnerId,
-                        )
-                    ? _selectedRunnerId
-                    : summaries.isEmpty
+      content: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: mediaSize.width < 760 ? mediaSize.width - 56 : 520,
+          maxHeight: mediaSize.height * 0.72,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Choose a race and racer, then enter a positive or negative number to manually adjust the overall total.',
+                style: Theme.of(context).textTheme.bodyLarge,
+              ),
+              const SizedBox(height: 18),
+              DropdownButtonFormField<int>(
+                initialValue: _selectedRaceId,
+                decoration: const InputDecoration(labelText: 'Race'),
+                items: widget.races
+                    .map(
+                      (race) => DropdownMenuItem<int>(
+                        value: race.id,
+                        child: Text(race.name),
+                      ),
+                    )
+                    .toList(growable: false),
+                onChanged: _isSaving
                     ? null
-                    : summaries.first.runnerId;
-                RunnerPointsSummary? selectedSummary;
-                for (final summary in summaries) {
-                  if (summary.runnerId == availableRunnerId) {
-                    selectedSummary = summary;
-                    break;
-                  }
-                }
-
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    DropdownButtonFormField<int>(
-                      key: ValueKey<int?>(availableRunnerId),
-                      initialValue: availableRunnerId,
-                      decoration: const InputDecoration(labelText: 'Racer'),
-                      items: summaries
-                          .map(
-                            (summary) => DropdownMenuItem<int>(
-                              value: summary.runnerId,
-                              child: Text(summary.runnerName),
-                            ),
+                    : (value) {
+                        setState(() {
+                          _selectedRaceId = value;
+                          _selectedRunnerId = null;
+                          _validationMessage = null;
+                        });
+                      },
+              ),
+              const SizedBox(height: 16),
+              racerSummariesAsync.when(
+                data: (summaries) {
+                  final availableRunnerId =
+                      _selectedRunnerId != null &&
+                          summaries.any(
+                            (row) => row.runnerId == _selectedRunnerId,
                           )
-                          .toList(growable: false),
-                      onChanged: _isSaving || summaries.isEmpty
-                          ? null
-                          : (value) {
-                              setState(() {
-                                _selectedRunnerId = value;
-                                _validationMessage = null;
-                              });
-                            },
-                    ),
-                    const SizedBox(height: 16),
-                    StatusBanner(
-                      title: selectedRace?.name ?? 'No race selected',
-                      message: summaries.isEmpty
-                          ? 'No racers are available in this race yet.'
-                          : selectedSummary == null
-                          ? 'Choose a racer to see the current total.'
-                          : '${selectedSummary.totalPoints} total points so far, with ${selectedSummary.pointsInRace} points already attached to this race.',
-                      tone: summaries.isEmpty
-                          ? StatusBannerTone.warning
-                          : StatusBannerTone.info,
-                    ),
-                  ],
-                );
-              },
-              loading: () => const LinearProgressIndicator(),
-              error: (error, stackTrace) => StatusBanner(
-                title: 'Could not load racers',
-                message: userFacingErrorMessage(
-                  error,
-                  fallback:
-                      'The racer list for this race could not be loaded right now.',
+                      ? _selectedRunnerId
+                      : summaries.isEmpty
+                      ? null
+                      : summaries.first.runnerId;
+                  RunnerPointsSummary? selectedSummary;
+                  for (final summary in summaries) {
+                    if (summary.runnerId == availableRunnerId) {
+                      selectedSummary = summary;
+                      break;
+                    }
+                  }
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      DropdownButtonFormField<int>(
+                        key: ValueKey<int?>(availableRunnerId),
+                        initialValue: availableRunnerId,
+                        decoration: const InputDecoration(labelText: 'Racer'),
+                        items: summaries
+                            .map(
+                              (summary) => DropdownMenuItem<int>(
+                                value: summary.runnerId,
+                                child: Text(summary.runnerName),
+                              ),
+                            )
+                            .toList(growable: false),
+                        onChanged: _isSaving || summaries.isEmpty
+                            ? null
+                            : (value) {
+                                setState(() {
+                                  _selectedRunnerId = value;
+                                  _validationMessage = null;
+                                });
+                              },
+                      ),
+                      const SizedBox(height: 16),
+                      StatusBanner(
+                        title: selectedRace?.name ?? 'No race selected',
+                        message: summaries.isEmpty
+                            ? 'No racers are available in this race yet.'
+                            : selectedSummary == null
+                            ? 'Choose a racer to see the current total.'
+                            : '${selectedSummary.totalPoints} total points so far, with ${selectedSummary.pointsInRace} points already attached to this race.',
+                        tone: summaries.isEmpty
+                            ? StatusBannerTone.warning
+                            : StatusBannerTone.info,
+                      ),
+                    ],
+                  );
+                },
+                loading: () => const LinearProgressIndicator(),
+                error: (error, stackTrace) => StatusBanner(
+                  title: 'Could not load racers',
+                  message: userFacingErrorMessage(
+                    error,
+                    fallback:
+                        'The racer list for this race could not be loaded right now.',
+                  ),
+                  tone: StatusBannerTone.error,
                 ),
-                tone: StatusBannerTone.error,
               ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _pointsController,
-              enabled: !_isSaving,
-              keyboardType: TextInputType.number,
-              inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp(r'-?[0-9]*')),
-              ],
-              decoration: InputDecoration(
-                labelText: 'Points adjustment',
-                hintText: 'Example: 10 or -5',
-                helperText:
-                    'Positive numbers add points. Negative numbers remove points.',
-                errorText: _validationMessage,
+              const SizedBox(height: 16),
+              TextField(
+                controller: _pointsController,
+                enabled: !_isSaving,
+                keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'-?[0-9]*')),
+                ],
+                decoration: InputDecoration(
+                  labelText: 'Points adjustment',
+                  hintText: 'Example: 10 or -5',
+                  helperText:
+                      'Positive numbers add points. Negative numbers remove points.',
+                  errorText: _validationMessage,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
       actions: [

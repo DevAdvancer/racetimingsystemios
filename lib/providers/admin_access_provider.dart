@@ -6,7 +6,7 @@ final adminAccessProvider = NotifierProvider<AdminAccessController, bool>(
 
 class AdminAccessController extends Notifier<bool> {
   @override
-  bool build() => false;
+  bool build() => true;
 
   void unlock() {
     state = true;

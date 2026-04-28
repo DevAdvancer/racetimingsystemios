@@ -9,6 +9,7 @@ class AppConstants {
   static const defaultCurrencyCode = 'USD';
   static const defaultEntryFeeMinor = 0;
   static const defaultPrinterMedia = '62mm';
+  static const defaultPrinterHost = 'QL-820NWB1997';
   static const resultsFilePrefix = 'racetimerapp_results';
   static const resultsPdfFilePrefix = 'racetimerapp_results_sheet';
   static const qrPacketPdfFilePrefix = 'racetimerapp_barcode_packet';

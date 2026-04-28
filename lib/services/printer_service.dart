@@ -1,13 +1,17 @@
 import 'package:flutter/services.dart';
-import 'package:race_timer/core/constants.dart';
 import 'package:race_timer/core/platform_support.dart';
 import 'package:race_timer/core/user_facing_error.dart';
+import 'package:race_timer/models/app_settings.dart';
+import 'package:race_timer/models/discovered_printer.dart';
 import 'package:race_timer/models/printer_status.dart';
 import 'package:race_timer/services/barcode_service.dart';
 import 'package:race_timer/services/settings_service.dart';
 
 abstract class PrinterService {
   Future<PrinterStatus> configure();
+  Future<List<DiscoveredPrinter>> discoverPrinters({
+    required PrinterConnectionType connectionType,
+  });
   Future<PrinterStatus> getStatus();
   Future<PrinterStatus> printLabel(LabelDocument document);
   Future<PrinterStatus> testPrint();
@@ -16,44 +20,40 @@ abstract class PrinterService {
 class MethodChannelPrinterService implements PrinterService {
   MethodChannelPrinterService(this._settingsService);
 
+  static const MethodChannel _channel = MethodChannel('com.racetimer/printer');
+
   final SettingsService _settingsService;
-  final MethodChannel _channel = const MethodChannel(
-    AppConstants.printerChannel,
-  );
 
   @override
   Future<PrinterStatus> configure() async {
-    final settings = await _settingsService.loadSettings();
-    if (!settings.hasPrinterConfigured) {
-      return PrinterStatus.notConfigured(
-        message:
-            '${settings.printerConnectionType.targetFieldLabel} is not configured.',
-      );
-    }
+    return getStatus();
+  }
+
+  @override
+  Future<List<DiscoveredPrinter>> discoverPrinters({
+    required PrinterConnectionType connectionType,
+  }) async {
     if (!PlatformSupport.supportsNativeBrotherPrinting) {
-      return PrinterStatus.unsupported();
+      return const [];
     }
 
     try {
-      final response = await _channel
-          .invokeMapMethod<Object?, Object?>('configure', <String, Object?>{
-            'host': settings.printerHost,
-            'media': settings.printerMedia,
-            'connectionType': settings.printerConnectionType.storageValue,
-          });
-      if (response == null) {
-        return PrinterStatus.error(
-          host: settings.printerHost,
-          message: 'The printer did not respond. Please try again.',
-        );
-      }
-      return PrinterStatus.fromMap(response);
+      final rawResult =
+          await _channel.invokeMethod<List<Object?>>(
+            'discoverPrinters',
+            <String, Object?>{'connectionType': connectionType.storageValue},
+          ) ??
+          const <Object?>[];
+
+      return rawResult
+          .whereType<Map<Object?, Object?>>()
+          .map(DiscoveredPrinter.fromMap)
+          .toList(growable: false);
     } on PlatformException catch (error) {
-      return PrinterStatus.error(
-        host: settings.printerHost,
-        message: userFacingErrorMessage(
+      throw Exception(
+        userFacingErrorMessage(
           error,
-          fallback: 'The printer could not be checked right now.',
+          fallback: 'The printer list could not be loaded right now.',
         ),
       );
     }
@@ -73,19 +73,8 @@ class MethodChannelPrinterService implements PrinterService {
     }
 
     try {
-      final response = await _channel
-          .invokeMapMethod<Object?, Object?>('getStatus', <String, Object?>{
-            'host': settings.printerHost,
-            'media': settings.printerMedia,
-            'connectionType': settings.printerConnectionType.storageValue,
-          });
-      if (response == null) {
-        return PrinterStatus.error(
-          host: settings.printerHost,
-          message: 'The printer status could not be read right now.',
-        );
-      }
-      return PrinterStatus.fromMap(response);
+      final result = await _invokeStatusMethod('getStatus', settings: settings);
+      return PrinterStatus.fromMap(result);
     } on PlatformException catch (error) {
       return PrinterStatus.error(
         host: settings.printerHost,
@@ -99,6 +88,31 @@ class MethodChannelPrinterService implements PrinterService {
 
   @override
   Future<PrinterStatus> printLabel(LabelDocument document) async {
+    return _printDocument(
+      document,
+      successFallback: 'Brother label sent successfully.',
+    );
+  }
+
+  @override
+  Future<PrinterStatus> testPrint() async {
+    return _printDocument(
+      const LabelDocument(
+        runnerName: 'Printer Test',
+        barcodeValue: 'TEST-PRINT',
+        raceId: 0,
+        raceName: 'RaceTimerApp',
+      ),
+      methodName: 'testPrint',
+      successFallback: 'Brother printer test label sent.',
+    );
+  }
+
+  Future<PrinterStatus> _printDocument(
+    LabelDocument document, {
+    String methodName = 'printLabel',
+    required String successFallback,
+  }) async {
     final settings = await _settingsService.loadSettings();
     if (!settings.hasPrinterConfigured) {
       return PrinterStatus.notConfigured(
@@ -113,66 +127,52 @@ class MethodChannelPrinterService implements PrinterService {
     }
 
     try {
-      final response = await _channel.invokeMapMethod<Object?, Object?>(
-        'printLabel',
-        document.toMap(
+      final result = await _invokeStatusMethod(
+        methodName,
+        settings: settings,
+        extra: document.toMap(
           printerHost: settings.printerHost,
           printerMedia: settings.printerMedia,
-        )..['connectionType'] = settings.printerConnectionType.storageValue,
+        ),
       );
-      if (response == null) {
-        return PrinterStatus.error(
-          host: settings.printerHost,
-          message: 'The printer did not confirm the label request.',
+      final status = PrinterStatus.fromMap(result);
+      if (status.message.trim().isEmpty && status.isReady) {
+        return PrinterStatus.success(
+          host: status.host,
+          message: successFallback,
         );
       }
-      return PrinterStatus.fromMap(response);
+      return status;
     } on PlatformException catch (error) {
       return PrinterStatus.error(
         host: settings.printerHost,
         message: userFacingErrorMessage(
           error,
-          fallback: 'The label could not be printed right now.',
+          fallback:
+              'The Brother printer could not complete that request right now.',
         ),
       );
     }
   }
 
-  @override
-  Future<PrinterStatus> testPrint() async {
-    final settings = await _settingsService.loadSettings();
-    if (!settings.hasPrinterConfigured) {
-      return PrinterStatus.notConfigured(
-        message:
-            '${settings.printerConnectionType.targetFieldLabel} is not configured.',
-      );
-    }
-    if (!PlatformSupport.supportsNativeBrotherPrinting) {
-      return PrinterStatus.unsupported();
-    }
+  Future<Map<Object?, Object?>> _invokeStatusMethod(
+    String methodName, {
+    required AppSettings settings,
+    Map<String, Object?> extra = const <String, Object?>{},
+  }) async {
+    final payload = <String, Object?>{
+      'printerHost': settings.printerHost,
+      'printerMedia': settings.printerMedia,
+      'connectionType': settings.printerConnectionType.storageValue,
+      ...extra,
+    };
 
-    try {
-      final response = await _channel
-          .invokeMapMethod<Object?, Object?>('testPrint', <String, Object?>{
-            'host': settings.printerHost,
-            'media': settings.printerMedia,
-            'connectionType': settings.printerConnectionType.storageValue,
-          });
-      if (response == null) {
-        return PrinterStatus.error(
-          host: settings.printerHost,
-          message: 'The printer did not respond to the print check.',
-        );
-      }
-      return PrinterStatus.fromMap(response);
-    } on PlatformException catch (error) {
-      return PrinterStatus.error(
-        host: settings.printerHost,
-        message: userFacingErrorMessage(
-          error,
-          fallback: 'The print check could not be completed right now.',
-        ),
-      );
-    }
+    final result =
+        await _channel.invokeMethod<Map<Object?, Object?>>(
+          methodName,
+          payload,
+        ) ??
+        const <Object?, Object?>{};
+    return result;
   }
 }

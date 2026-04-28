@@ -14,7 +14,6 @@ import 'package:race_timer/screens/setup_screen.dart';
 import 'package:race_timer/screens/start_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
-  final adminUnlocked = ref.watch(adminAccessProvider);
   const publicRoutes = <String>{
     AppRoutes.home,
     AppRoutes.adminHome,
@@ -25,6 +24,7 @@ final routerProvider = Provider<GoRouter>((ref) {
     initialLocation: AppRoutes.adminHome,
     redirect: (context, state) {
       final path = state.uri.path;
+      final adminUnlocked = ref.read(adminAccessProvider);
       if (!adminUnlocked && !publicRoutes.contains(path)) {
         return AppRoutes.adminHome;
       }

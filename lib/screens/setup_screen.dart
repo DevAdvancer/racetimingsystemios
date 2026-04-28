@@ -7,6 +7,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:race_timer/core/constants.dart';
 import 'package:race_timer/core/user_facing_error.dart';
 import 'package:race_timer/models/app_settings.dart';
+import 'package:race_timer/models/discovered_printer.dart';
 import 'package:race_timer/providers/admin_access_provider.dart';
 import 'package:race_timer/providers/check_in_provider.dart';
 import 'package:race_timer/providers/race_provider.dart';
@@ -41,9 +42,11 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   final TextEditingController _scannerCheckController = TextEditingController();
   final FocusNode _scannerCheckFocusNode = FocusNode();
   late final Future<PackageInfo> _packageInfoFuture;
+  List<DiscoveredPrinter> _availablePrinters = const [];
+  bool _discoveringPrinters = false;
   bool _loadedSettings = false;
-  PrinterConnectionType _printerConnectionType =
-      PrinterConnectionType.network;
+  String? _printerDiscoveryMessage;
+  PrinterConnectionType _printerConnectionType = PrinterConnectionType.network;
   DateTime? _lastScannerCheckAt;
   String? _lastScannerCheckValue;
 
@@ -81,6 +84,109 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
     super.dispose();
   }
 
+  Future<void> _scanForAvailablePrinters() async {
+    setState(() {
+      _discoveringPrinters = true;
+      _printerDiscoveryMessage =
+          _printerConnectionType == PrinterConnectionType.network
+          ? 'Searching the local network for Brother QL-820NWB printers.'
+          : 'Searching Bluetooth for Brother QL-820NWB printers.';
+    });
+
+    try {
+      final printers = await ref
+          .read(printerServiceProvider)
+          .discoverPrinters(connectionType: _printerConnectionType);
+      if (!mounted) {
+        return;
+      }
+
+      var message = printers.isEmpty
+          ? _printerConnectionType == PrinterConnectionType.network
+                ? 'No Brother QL-820NWB printers were found on Wi-Fi. Make sure the iPad and printer are on the same network, or save the printer IP address manually.'
+                : 'No Brother QL-820NWB printers were found over Bluetooth. Save the exact Bluetooth name, serial number, or MAC address manually.'
+          : 'Found ${printers.length} available ${printers.length == 1 ? 'printer' : 'printers'}. Tap one to use it for this iPad.';
+
+      DiscoveredPrinter? defaultPrinter;
+      for (final printer in printers) {
+        if (_isDefaultPrinter(printer)) {
+          defaultPrinter = printer;
+          break;
+        }
+      }
+      if (defaultPrinter != null) {
+        _printerHostController.text = defaultPrinter.host;
+        await _savePrinterSettings();
+        message =
+            '${defaultPrinter.displayName} matched ${AppConstants.defaultPrinterHost} and was saved for this iPad.';
+      } else if (printers.length == 1 &&
+          _printerHostController.text.trim().isEmpty) {
+        _printerHostController.text = printers.first.host;
+        await _savePrinterSettings();
+        message =
+            '${printers.first.displayName} was found and saved for this iPad.';
+      }
+
+      setState(() {
+        _availablePrinters = printers;
+        _printerDiscoveryMessage = message;
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _availablePrinters = const [];
+        _printerDiscoveryMessage = userFacingErrorMessage(
+          error,
+          fallback: 'The printer list could not be loaded right now.',
+        );
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _discoveringPrinters = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _useDiscoveredPrinter(DiscoveredPrinter printer) async {
+    setState(() {
+      _printerHostController.text = printer.host;
+      _printerDiscoveryMessage =
+          'Using ${printer.displayName} as ${printer.modelName}. Saving this selection for this iPad.';
+    });
+    await _savePrinterSettings();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _printerDiscoveryMessage =
+          'Using ${printer.displayName} as ${printer.modelName}. This printer was saved for this iPad.';
+    });
+  }
+
+  Future<AppSettings> _savePrinterSettings() async {
+    final loadedSettings = ref.read(settingsProvider).asData?.value;
+    final currentSettings =
+        loadedSettings ??
+        await ref.read(settingsProvider.future) ??
+        AppSettings.defaults();
+    final updated = currentSettings.copyWith(
+      printerHost: _printerHostController.text.trim(),
+      printerMedia: _normalizePrinterMediaValue(_printerMediaController.text),
+      printerConnectionType: _printerConnectionType,
+    );
+    return ref.read(settingsProvider.notifier).saveSettings(updated);
+  }
+
+  bool _isDefaultPrinter(DiscoveredPrinter printer) {
+    final defaultName = AppConstants.defaultPrinterHost.toLowerCase();
+    return printer.host.toLowerCase() == defaultName ||
+        printer.displayName.toLowerCase() == defaultName;
+  }
+
   @override
   Widget build(BuildContext context) {
     final settingsAsync = ref.watch(settingsProvider);
@@ -106,15 +212,20 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          tooltip: 'Back to Choose Race',
+          onPressed: () => context.go(AppRoutes.adminHome),
+          icon: const Icon(Icons.arrow_back),
+        ),
         title: const BrandAppBarTitle(pageTitle: 'Organizer Setup'),
         actions: [
           IconButton(
-            tooltip: 'Return to start screen',
+            tooltip: 'Runner Kiosk',
             onPressed: () {
+              context.go(AppRoutes.registration);
               ref.read(adminAccessProvider.notifier).lock();
-              context.go(AppRoutes.home);
             },
-            icon: const Icon(Icons.lock_outline),
+            icon: const Icon(Icons.badge_outlined),
           ),
         ],
       ),
@@ -127,7 +238,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
               final setupSections = <Widget>[
                 _buildSectionCard(
                   context,
-                  title: '${AppConstants.appName} Details',
+                  title: 'App Version',
                   children: [
                     Row(
                       children: [
@@ -169,10 +280,10 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                 ),
                 _buildSectionCard(
                   context,
-                  title: 'Step 1: Save Race Name',
+                  title: 'Choose or Create Race',
                   children: [
                     Text(
-                      'This is the race volunteers will use today.',
+                      'Create the race volunteers will use today, or return to Choose Race to open an existing race.',
                       style: Theme.of(context).textTheme.bodyLarge,
                     ),
                     const SizedBox(height: 16),
@@ -225,11 +336,17 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                       },
                       child: const Text('Save Race Name'),
                     ),
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: () => context.go(AppRoutes.adminHome),
+                      icon: const Icon(Icons.list_alt_outlined),
+                      label: const Text('Open Choose Race'),
+                    ),
                   ],
                 ),
                 _buildSectionCard(
                   context,
-                  title: 'Step 2: Race Roster Tools',
+                  title: 'Race Roster Tools',
                   children: [
                     Text(
                       'Runner import and manual runner add now live inside the selected race dashboard so they only appear when a race is open.',
@@ -246,11 +363,45 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                 ),
                 _buildSectionCard(
                   context,
-                  title: 'Step 3: Printer Setup',
+                  title: 'Point Tools',
                   children: [
                     Text(
-                      'Set up the Brother QL-820NWB connection for this iPad. Bluetooth uses a saved manual printer target, and Wi-Fi can use a saved IP/hostname or auto-discover the printer on the current network.',
+                      'Use point tools to review overall standings or award points from the selected race dashboard.',
                       style: Theme.of(context).textTheme.bodyLarge,
+                    ),
+                    const SizedBox(height: 16),
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: () => context.go(AppRoutes.overallPoints),
+                          icon: const Icon(Icons.table_chart_outlined),
+                          label: const Text('Open Overall Points'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: () => context.go(AppRoutes.raceDashboard),
+                          icon: const Icon(Icons.dashboard_outlined),
+                          label: const Text('Open Race Dashboard'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                _buildSectionCard(
+                  context,
+                  title: 'Printer Setup and Verify',
+                  children: [
+                    Text(
+                      'Set up the Brother QL-820NWB connection for this iPad. The app defaults to ${AppConstants.defaultPrinterHost} and will try to auto-connect to that printer name.',
+                      style: Theme.of(context).textTheme.bodyLarge,
+                    ),
+                    const SizedBox(height: 16),
+                    const StatusBanner(
+                      title: 'Recommended connection',
+                      message:
+                          'Use Wi-Fi / network printing first. The app searches the local network, verifies the QL-820NWB model family, and prefers ${AppConstants.defaultPrinterHost} when that printer appears.',
+                      tone: StatusBannerTone.info,
                     ),
                     const SizedBox(height: 16),
                     SegmentedButton<PrinterConnectionType>(
@@ -270,6 +421,8 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                       onSelectionChanged: (selection) {
                         setState(() {
                           _printerConnectionType = selection.first;
+                          _availablePrinters = const [];
+                          _printerDiscoveryMessage = null;
                         });
                       },
                     ),
@@ -282,8 +435,8 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                         hintText:
                             _printerConnectionType ==
                                 PrinterConnectionType.bluetooth
-                            ? 'Example: QL-820NWB or 00:80:92:12:34:56'
-                            : 'Example: 192.168.1.45, brother-printer.local, or leave blank to auto-discover',
+                            ? 'Example: ${AppConstants.defaultPrinterHost}, serial number, or available Bluetooth name'
+                            : 'Example: 192.168.1.45, brother-printer.local, ${AppConstants.defaultPrinterHost}, or leave blank to auto-discover',
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -295,6 +448,69 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                             'Use 62mm for the standard Brother label roll.',
                       ),
                     ),
+                    const SizedBox(height: 16),
+                    OutlinedButton.icon(
+                      onPressed: _discoveringPrinters
+                          ? null
+                          : () async {
+                              await _scanForAvailablePrinters();
+                            },
+                      icon: Icon(
+                        _printerConnectionType == PrinterConnectionType.network
+                            ? Icons.wifi_find
+                            : Icons.bluetooth_searching,
+                      ),
+                      label: Text(
+                        _discoveringPrinters
+                            ? 'Searching...'
+                            : _printerConnectionType ==
+                                  PrinterConnectionType.network
+                            ? 'Find Available Wi-Fi Printers'
+                            : 'Find Available Bluetooth Printers',
+                      ),
+                    ),
+                    if (_printerDiscoveryMessage != null) ...[
+                      const SizedBox(height: 12),
+                      StatusBanner(
+                        title: _availablePrinters.isEmpty
+                            ? 'Printer discovery'
+                            : 'Available printers',
+                        message: _printerDiscoveryMessage!,
+                        tone: _availablePrinters.isEmpty
+                            ? StatusBannerTone.warning
+                            : StatusBannerTone.success,
+                      ),
+                    ],
+                    if (_availablePrinters.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      ..._availablePrinters.map(
+                        (printer) => Card(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 6,
+                            ),
+                            leading: Icon(
+                              printer.connectionType ==
+                                      PrinterConnectionType.network
+                                  ? Icons.print_outlined
+                                  : Icons.bluetooth_connected,
+                            ),
+                            title: Text(printer.displayName),
+                            subtitle: Text(
+                              '${printer.modelName} • ${printer.host}',
+                            ),
+                            trailing: TextButton(
+                              onPressed: () async {
+                                await _useDiscoveredPrinter(printer);
+                              },
+                              child: const Text('Use This'),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 16),
                     ElevatedButton(
                       onPressed: () async {
@@ -327,19 +543,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                       onPressed: settingsAsync.isLoading
                           ? null
                           : () async {
-                              final currentSettings =
-                                  settingsAsync.asData?.value ??
-                                  AppSettings.defaults();
-                              final updated = currentSettings.copyWith(
-                                printerHost: _printerHostController.text.trim(),
-                                printerMedia: _normalizePrinterMediaValue(
-                                  _printerMediaController.text,
-                                ),
-                                printerConnectionType: _printerConnectionType,
-                              );
-                              await ref
-                                  .read(settingsProvider.notifier)
-                                  .saveSettings(updated);
+                              await _savePrinterSettings();
                               if (context.mounted) {
                                 await showUserMessageDialog(
                                   context,
@@ -377,7 +581,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                 ),
                 _buildSectionCard(
                   context,
-                  title: 'Step 4: Barcode Scanner Check',
+                  title: 'Barcode Scanner Setup and Verify',
                   children: [
                     Text(
                       'Use this check to confirm the Tera AT006 is connected and sending scans to the app.',
@@ -389,7 +593,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                 ),
                 _buildSectionCard(
                   context,
-                  title: 'Step 5: Reset Device Data',
+                  title: 'Reset Device Data',
                   children: [
                     Text(
                       'Use this only when you want to clear the device and start over with a fresh race setup.',
@@ -436,7 +640,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                 ),
                 _buildSectionCard(
                   context,
-                  title: 'Step 6: Admin Access',
+                  title: 'Admin Access',
                   children: [
                     Text(
                       'Set the 3-digit code organizers use to unlock setup and race management.',
@@ -498,7 +702,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                 ),
                 _buildSectionCard(
                   context,
-                  title: 'Step 7: Bulk Race Creation',
+                  title: 'Race Schedule Tools',
                   children: [
                     Text(
                       'Create the season by importing an Excel/CSV race schedule file or by typing one date per line.',
@@ -595,35 +799,28 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                 children: [
                   _buildSectionCard(
                     context,
-                    title: 'Quick Start',
-                    children: const [
-                      _SetupStep(
-                        number: '1',
-                        title: 'Save the race name',
-                        message:
-                            'Create the race first so the app knows which race dashboard volunteers should open.',
+                    title: 'Organizer Quick Setup Instructions',
+                    children: [
+                      const _InstructionLine(
+                        text:
+                            'Open Organizer Tools by clicking the three dots in the top right corner of the homepage.',
                       ),
-                      SizedBox(height: 12),
-                      _SetupStep(
-                        number: '2',
-                        title: 'Open the race dashboard',
-                        message:
-                            'Import runners or add a new runner from the selected race dashboard after you choose the race.',
+                      const _InstructionLine(
+                        text:
+                            'Enter the 3 digit code (1,2,3). This can be changed once you are in the app.',
                       ),
-                      SizedBox(height: 12),
-                      _SetupStep(
-                        number: '3',
-                        title: 'Save printer setup',
-                        message:
-                            'Choose Bluetooth or Wi-Fi and save the Brother QL-820NWB connection for this iPad.',
+                      const _InstructionLine(text: 'Open the Race Dashboard.'),
+                      const _InstructionLine(
+                        text: 'Open Choose or Create Race.',
                       ),
-                      SizedBox(height: 12),
-                      _SetupStep(
-                        number: '4',
-                        title: 'Confirm the scanner',
-                        message:
-                            'Run the Tera AT006 scanner check so volunteers know the iPad is receiving barcode input.',
+                      const _InstructionLine(text: 'Open Timing Screen.'),
+                      const SizedBox(height: 18),
+                      Text(
+                        'Maintenance tools on this page:',
+                        style: Theme.of(context).textTheme.titleMedium,
                       ),
+                      const SizedBox(height: 12),
+                      const _MaintenanceToolList(),
                     ],
                   ),
                   const SizedBox(height: 24),
@@ -1013,44 +1210,63 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   }
 }
 
-class _SetupStep extends StatelessWidget {
-  const _SetupStep({
-    required this.number,
-    required this.title,
-    required this.message,
-  });
+class _InstructionLine extends StatelessWidget {
+  const _InstructionLine({required this.text});
 
-  final String number;
-  final String title;
-  final String message;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final textStyle = Theme.of(context).textTheme.titleMedium;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 18),
+      child: Text(text, style: textStyle),
+    );
+  }
+}
+
+class _MaintenanceToolList extends StatelessWidget {
+  const _MaintenanceToolList();
+
+  static const _tools = <String>[
+    'App version',
+    'Race Roster tools',
+    'Point tools',
+    'Printer Set up and verify',
+    'Barcode Scanner set up and verify',
+    'Reset Device Data',
+  ];
 
   @override
   Widget build(BuildContext context) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          height: 34,
-          width: 34,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.primaryContainer,
-            borderRadius: BorderRadius.circular(17),
-          ),
-          child: Text(number, style: Theme.of(context).textTheme.titleMedium),
-        ),
-        const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 4),
-              Text(message, style: Theme.of(context).textTheme.bodyMedium),
+              for (final tool in _tools)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _MaintenanceToolName(tool),
+                ),
             ],
           ),
         ),
       ],
     );
+  }
+}
+
+class _MaintenanceToolName extends StatelessWidget {
+  const _MaintenanceToolName(this.tool);
+
+  final String tool;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(tool, style: Theme.of(context).textTheme.titleMedium);
   }
 }

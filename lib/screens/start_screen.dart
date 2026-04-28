@@ -116,10 +116,10 @@ class StartScreen extends ConsumerWidget {
                                 height: 104,
                                 child: FilledButton.icon(
                                   onPressed: () {
+                                    context.go(AppRoutes.registration);
                                     ref
                                         .read(adminAccessProvider.notifier)
                                         .lock();
-                                    context.go(AppRoutes.registration);
                                   },
                                   icon: const Icon(
                                     Icons.print_outlined,

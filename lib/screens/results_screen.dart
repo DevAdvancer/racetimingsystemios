@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:race_timer/core/constants.dart';
 import 'package:race_timer/core/user_facing_error.dart';
-import 'package:race_timer/providers/admin_access_provider.dart';
 import 'package:race_timer/providers/results_provider.dart';
 import 'package:race_timer/widgets/branding.dart';
 import 'package:race_timer/widgets/results_table.dart';
@@ -18,18 +17,18 @@ class ResultsScreen extends ConsumerWidget {
     final finisherCount = resultsAsync.asData?.value
         .where((row) => row.finishTime != null)
         .length;
+    final startedCount = resultsAsync.asData?.value
+        .where((row) => row.startTime != null || row.finishTime != null)
+        .length;
 
     return Scaffold(
       appBar: AppBar(
         title: const BrandAppBarTitle(pageTitle: 'Live Results'),
         actions: [
           IconButton(
-            tooltip: 'Return to start screen',
-            onPressed: () {
-              ref.read(adminAccessProvider.notifier).lock();
-              context.go(AppRoutes.home);
-            },
-            icon: const Icon(Icons.lock_outline),
+            tooltip: 'Back to Race Dashboard',
+            onPressed: () => context.go(AppRoutes.raceDashboard),
+            icon: const Icon(Icons.arrow_back),
           ),
         ],
       ),
@@ -40,17 +39,18 @@ class ResultsScreen extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const StatusBanner(
-                title: 'Finish order',
-                message: 'Results update automatically after each finisher.',
+                title: 'Live race results',
+                message:
+                    'Runners appear here after Global Start. Finish scans and Global Stop update their end and total times automatically.',
                 tone: StatusBannerTone.info,
               ),
-              if (finisherCount != null) ...[
+              if (finisherCount != null && startedCount != null) ...[
                 const SizedBox(height: 12),
                 StatusBanner(
-                  title: 'Recorded finishers',
-                  message: finisherCount == 0
-                      ? 'No finishers have been scanned yet.'
-                      : '$finisherCount finishers are in the live order below.',
+                  title: 'Recorded runners',
+                  message: startedCount == 0
+                      ? 'No runners have started yet.'
+                      : '$startedCount runners shown. $finisherCount ${finisherCount == 1 ? 'runner has' : 'runners have'} an end time.',
                   tone: StatusBannerTone.success,
                 ),
               ],

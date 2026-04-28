@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:race_timer/database/database_helper.dart';
+import 'package:race_timer/models/app_settings.dart';
+import 'package:race_timer/models/discovered_printer.dart';
 import 'package:race_timer/models/printer_status.dart';
 import 'package:race_timer/providers/race_provider.dart';
 import 'package:race_timer/providers/settings_provider.dart';
@@ -15,6 +17,11 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 class _FakePrinterService implements PrinterService {
   @override
   Future<PrinterStatus> configure() async => PrinterStatus.ready();
+
+  @override
+  Future<List<DiscoveredPrinter>> discoverPrinters({
+    required PrinterConnectionType connectionType,
+  }) async => const [];
 
   @override
   Future<PrinterStatus> getStatus() async => PrinterStatus.ready();

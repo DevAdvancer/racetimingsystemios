@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,7 +8,6 @@ import 'package:race_timer/core/user_facing_error.dart';
 import 'package:race_timer/models/finish_scan_result.dart';
 import 'package:race_timer/models/race.dart';
 import 'package:race_timer/models/race_result.dart';
-import 'package:race_timer/providers/admin_access_provider.dart';
 import 'package:race_timer/providers/finish_scanner_provider.dart';
 import 'package:race_timer/providers/race_provider.dart';
 import 'package:race_timer/providers/results_provider.dart';
@@ -28,6 +29,8 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
   final TextEditingController _scannerController = TextEditingController();
   final FocusNode _scannerFocusNode = FocusNode();
   final ValueNotifier<String> _bufferNotifier = ValueNotifier<String>('');
+  Timer? _autoSubmitTimer;
+  bool _submittingScan = false;
 
   @override
   void initState() {
@@ -41,6 +44,7 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
 
   @override
   void dispose() {
+    _autoSubmitTimer?.cancel();
     _bufferNotifier.dispose();
     _scannerController.dispose();
     _scannerFocusNode.dispose();
@@ -58,38 +62,66 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
       return;
     }
     _bufferNotifier.value = value;
+    _autoSubmitTimer?.cancel();
+    if (value.trim().isEmpty || _submittingScan) {
+      return;
+    }
+
+    if (value.contains('\n') || value.contains('\r') || value.contains('\t')) {
+      unawaited(_submitScan());
+      return;
+    }
+
+    _autoSubmitTimer = Timer(const Duration(milliseconds: 180), () {
+      if (mounted &&
+          !_submittingScan &&
+          _scannerController.text.trim().isNotEmpty) {
+        unawaited(_submitScan());
+      }
+    });
   }
 
   Future<void> _submitScan() async {
-    final result = await ref
-        .read(finishScannerProvider.notifier)
-        .submitBuffer(_scannerController.text);
-    if (!mounted) {
+    if (_submittingScan) {
       return;
     }
-    _scannerController.clear();
-    _bufferNotifier.value = '';
-    _requestScannerFocus();
-    await _showRecordedScanDialog(result);
-    if (!mounted) {
+    final scanValue = _scannerController.text.trim();
+    if (scanValue.isEmpty) {
+      _requestScannerFocus();
       return;
     }
-    _requestScannerFocus();
+
+    _autoSubmitTimer?.cancel();
+    _submittingScan = true;
+    try {
+      final result = await ref
+          .read(finishScannerProvider.notifier)
+          .submitBuffer(scanValue);
+      if (!mounted) {
+        return;
+      }
+      _scannerController.clear();
+      _bufferNotifier.value = '';
+      _requestScannerFocus();
+      await _showRecordedScanDialog(result);
+    } finally {
+      _submittingScan = false;
+      if (mounted) {
+        _requestScannerFocus();
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const BrandAppBarTitle(pageTitle: 'Runner Scanner'),
+        title: const BrandAppBarTitle(pageTitle: 'Timing Capture'),
         actions: [
           IconButton(
-            tooltip: 'Return to start screen',
-            onPressed: () {
-              ref.read(adminAccessProvider.notifier).lock();
-              context.go(AppRoutes.home);
-            },
-            icon: const Icon(Icons.lock_outline),
+            tooltip: 'Back to Race Dashboard',
+            onPressed: () => context.go(AppRoutes.raceDashboard),
+            icon: const Icon(Icons.arrow_back),
           ),
         ],
       ),
@@ -256,7 +288,7 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
         const StatusBanner(
           title: 'How scanning works',
           message:
-              'Use Global Start in Race Control for everyone except early starters. Before Global Start, scanning a runner barcode records that runner\'s personal early start. After Global Start, scanning a runner barcode records the finish.',
+              'Use Global Start in Race Timing for everyone except early starters. Before Global Start, scanning a runner barcode records that runner\'s personal early start. After Global Start, scanning a runner barcode records the finish.',
           tone: StatusBannerTone.info,
         ),
         const SizedBox(height: 20),
@@ -314,18 +346,21 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
     final finisherCount = resultsAsync.asData?.value
         .where((row) => row.finishTime != null)
         .length;
-    final finisherMessage = finisherCount == null
-        ? 'Each finisher appears here immediately after scanning.'
-        : finisherCount == 0
-        ? 'Each finisher appears here immediately after scanning.'
-        : '$finisherCount finishers recorded. Early starters stay tagged in the order they finished.';
+    final startedCount = resultsAsync.asData?.value
+        .where((row) => row.startTime != null || row.finishTime != null)
+        .length;
+    final resultMessage = finisherCount == null || startedCount == null
+        ? 'Runners appear here after Global Start.'
+        : startedCount == 0
+        ? 'Runners appear here after Global Start.'
+        : '$startedCount runners shown. $finisherCount ${finisherCount == 1 ? 'runner has' : 'runners have'} an end time.';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         StatusBanner(
-          title: 'Live finish order',
-          message: finisherMessage,
+          title: 'Live race results',
+          message: resultMessage,
           tone: StatusBannerTone.info,
         ),
         const SizedBox(height: 16),

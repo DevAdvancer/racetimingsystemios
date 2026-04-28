@@ -13,13 +13,18 @@ class SettingsService {
   }
 
   Future<AppSettings> loadSettings() async {
+    final savedPrinterHost = _preferences.getString(
+      AppConstants.settingsPrinterHostKey,
+    );
+
     return AppSettings(
       themeMode: AppThemeMode.fromStorage(
         _preferences.getString(AppConstants.settingsThemeModeKey),
       ),
       dryRunMode: _preferences.getBool(AppConstants.settingsDryRunKey) ?? false,
-      printerHost:
-          _preferences.getString(AppConstants.settingsPrinterHostKey) ?? '',
+      printerHost: savedPrinterHost == null || savedPrinterHost.trim().isEmpty
+          ? AppConstants.defaultPrinterHost
+          : savedPrinterHost,
       printerMedia:
           _preferences.getString(AppConstants.settingsPrinterMediaKey) ??
           AppConstants.defaultPrinterMedia,

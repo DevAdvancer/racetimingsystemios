@@ -204,6 +204,7 @@
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
 				C0B362AC4029335423D374A5 /* [CP] Embed Pods Frameworks */,
 				F18E6C8B7D4A43B2A1C90011 /* Fix Native Asset Paths */,
+				A8F5E7D64A74432EA8F6E2B1 /* Generate Archive dSYMs */,
 			);
 			buildRules = (
 			);
@@ -305,6 +306,21 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "/bin/sh \"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" build";
+		};
+		A8F5E7D64A74432EA8F6E2B1 /* Generate Archive dSYMs */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Generate Archive dSYMs";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "/bin/sh \"${SRCROOT}/scripts/generate_archive_dsyms.sh\"\n";
 		};
 		C0B362AC4029335423D374A5 /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;

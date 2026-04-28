@@ -97,7 +97,8 @@ final class BrotherPrinterBridge: NSObject {
   }
 
   private func handle(call: FlutterMethodCall, result: @escaping FlutterResult) {
-    guard let arguments = call.arguments as? [String: Any] else {
+    let arguments = (call.arguments as? [String: Any]) ?? [:]
+    guard call.method == "discoverPrinters" || !arguments.isEmpty else {
       result(statusMap(health: "error", message: "The printer request could not be completed.", host: nil))
       return
     }
@@ -105,6 +106,8 @@ final class BrotherPrinterBridge: NSObject {
     let request = PrinterRequest(arguments: arguments)
 
     switch call.method {
+    case "discoverPrinters":
+      discoverPrinters(for: request, result: result)
     case "configure", "getStatus":
       checkStatus(for: request, result: result)
     case "testPrint":
@@ -113,6 +116,57 @@ final class BrotherPrinterBridge: NSObject {
       printRunnerLabel(for: request, result: result)
     default:
       result(FlutterMethodNotImplemented)
+    }
+  }
+
+  private func discoverPrinters(for request: PrinterRequest, result: @escaping FlutterResult) {
+    DispatchQueue.global(qos: .userInitiated).async {
+      let channels: [BRLMChannel]
+      switch request.connectionType {
+      case .network:
+        channels = self.searchNetworkChannels()
+      case .bluetooth:
+        channels = self.searchBluetoothChannels()
+      }
+
+      let seen = NSMutableSet()
+      let payload = channels.compactMap { channel -> [String: Any]? in
+        let resolved = self.resolvedPrinter(
+          from: channel,
+          connectionType: request.connectionType,
+          automaticallyDiscovered: true
+        )
+        let printerName =
+          self.extraInfoValue(channel.extraInfo, key: BRLMChannelExtraInfoKeyAdvertiseLocalName) ??
+          self.extraInfoValue(channel.extraInfo, key: BRLMChannelExtraInfoKeyNodeName) ??
+          self.extraInfoValue(channel.extraInfo, key: BRLMChannelExtraInfoKeyModelName) ??
+          resolved.modelName ??
+          "QL-820NWB"
+
+        let dedupeKey = "\(request.connectionType.rawValue)|\(resolved.host)|\(printerName)"
+        guard !resolved.host.isEmpty, !seen.contains(dedupeKey) else {
+          return nil
+        }
+        seen.add(dedupeKey)
+
+        return [
+          "connectionType": request.connectionType.rawValue,
+          "host": resolved.host,
+          "modelName": resolved.modelName ?? "QL-820NWB",
+          "printerName": printerName
+        ]
+      }.sorted { left, right in
+        let leftName = (left["printerName"] as? String ?? "").lowercased()
+        let rightName = (right["printerName"] as? String ?? "").lowercased()
+        if leftName == rightName {
+          return (left["host"] as? String ?? "").lowercased() < (right["host"] as? String ?? "").lowercased()
+        }
+        return leftName < rightName
+      }
+
+      DispatchQueue.main.async {
+        result(payload)
+      }
     }
   }
 
@@ -266,6 +320,26 @@ final class BrotherPrinterBridge: NSObject {
         return
       }
 
+      if resolved.channel.channelType == .bluetoothMFi || resolved.channel.channelType == .bluetoothLowEnergy {
+        Thread.sleep(forTimeInterval: 2.0)
+        let postPrintStatus = driver.getPrinterStatus()
+        guard postPrintStatus.error.code == .noError else {
+          result(
+            self.statusMap(
+              health: "error",
+              message: self.statusErrorMessage(for: resolved, error: postPrintStatus.error.code),
+              host: resolved.host
+            )
+          )
+          return
+        }
+
+        if let status = postPrintStatus.status, status.errorCode != .noError {
+          result(self.statusPayload(for: status, resolved: resolved))
+          return
+        }
+      }
+
       result(
         self.statusMap(
           health: "success",
@@ -334,8 +408,7 @@ final class BrotherPrinterBridge: NSObject {
         return (nil, ("notConfigured", request.connectionType.setupMessage))
       }
 
-      let searchResult = BRLMPrinterSearcher.startBluetoothSearch()
-      let matches = searchResult.channels.filter { channel in
+      let matches = searchBluetoothChannels().filter { channel in
         isSupportedBrotherChannel(channel) && matchesBluetoothTarget(query: host, channel: channel)
       }
       if let first = matches.first, matches.count == 1 {
@@ -346,6 +419,19 @@ final class BrotherPrinterBridge: NSObject {
       }
       if matches.count > 1 {
         return (nil, ("error", "Multiple Brother Bluetooth printers matched that identifier. Save the exact serial number or MAC address for the printer you want to use."))
+      }
+
+      if bluetoothFallbackLooksLikeBLELocalName(host) {
+        return (
+          ResolvedPrinter(
+            channel: BRLMChannel(bleLocalName: host),
+            host: host,
+            connectionType: .bluetooth,
+            modelName: "QL-820NWB",
+            automaticallyDiscovered: false
+          ),
+          nil
+        )
       }
 
       return (
@@ -373,10 +459,7 @@ final class BrotherPrinterBridge: NSObject {
       resolvedHost = extraInfoValue(extraInfo, key: BRLMChannelExtraInfoKeyIpAddress) ?? channel.channelInfo
     case .bluetooth:
       resolvedHost =
-        extraInfoValue(extraInfo, key: BRLMChannelExtraInfoKeyMacAddress) ??
-        extraInfoValue(extraInfo, key: BRLMChannelExtraInfoKeyAdvertiseLocalName) ??
-        extraInfoValue(extraInfo, key: BRLMChannelExtraInfoKeySerialNumber) ??
-        channel.channelInfo
+        bluetoothConnectionTarget(for: channel)
     }
 
     return ResolvedPrinter(
@@ -390,7 +473,20 @@ final class BrotherPrinterBridge: NSObject {
 
   private func isSupportedBrotherChannel(_ channel: BRLMChannel) -> Bool {
     let modelName = extraInfoValue(channel.extraInfo, key: BRLMChannelExtraInfoKeyModelName) ?? ""
-    return supportedPrinterNames.contains(modelName)
+    if supportedPrinterNames.contains(modelName) {
+      return true
+    }
+
+    let candidates = [
+      modelName,
+      channel.channelInfo,
+      extraInfoValue(channel.extraInfo, key: BRLMChannelExtraInfoKeyAdvertiseLocalName),
+      extraInfoValue(channel.extraInfo, key: BRLMChannelExtraInfoKeyNodeName)
+    ]
+    return candidates.compactMap { $0 }.contains { value in
+      let normalized = normalizedPrinterModelName(value)
+      return supportedPrinterNames.contains { normalized == normalizedPrinterModelName($0) }
+    }
   }
 
   private func searchNetworkChannels() -> [BRLMChannel] {
@@ -399,6 +495,25 @@ final class BrotherPrinterBridge: NSObject {
     option.searchDuration = 8   // 8 s gives QL-820NWB enough time on busy race-day Wi-Fi
     let searchResult = BRLMPrinterSearcher.startNetworkSearch(option) { _ in }
     return searchResult.channels.filter(isSupportedBrotherChannel)
+  }
+
+  private func searchBluetoothChannels() -> [BRLMChannel] {
+    var channels = BRLMPrinterSearcher.startBluetoothSearch().channels
+
+    let bleOption = BRLMBLESearchOption()
+    bleOption.searchDuration = 8
+    let bleResult = BRLMPrinterSearcher.startBLESearch(bleOption) { _ in }
+    channels.append(contentsOf: bleResult.channels)
+
+    let seen = NSMutableSet()
+    return channels.filter(isSupportedBrotherChannel).filter { channel in
+      let dedupeKey = "\(channel.channelType.rawValue)|\(bluetoothConnectionTarget(for: channel))"
+      guard !seen.contains(dedupeKey) else {
+        return false
+      }
+      seen.add(dedupeKey)
+      return true
+    }
   }
 
   private func matchingNetworkChannels(for query: String) -> [BRLMChannel] {
@@ -454,6 +569,25 @@ final class BrotherPrinterBridge: NSObject {
     return candidates.compactMap { $0 }.contains { normalizedIdentifier($0) == normalizedQuery }
   }
 
+  private func bluetoothConnectionTarget(for channel: BRLMChannel) -> String {
+    let extraInfo = channel.extraInfo
+    if channel.channelType == .bluetoothLowEnergy {
+      return extraInfoValue(extraInfo, key: BRLMChannelExtraInfoKeyAdvertiseLocalName) ?? channel.channelInfo
+    }
+
+    return
+      extraInfoValue(extraInfo, key: BRLMChannelExtraInfoKeySerialNumber) ??
+      (channel.channelInfo.isEmpty ? nil : channel.channelInfo) ??
+      extraInfoValue(extraInfo, key: BRLMChannelExtraInfoKeyAdvertiseLocalName) ??
+      extraInfoValue(extraInfo, key: BRLMChannelExtraInfoKeyMacAddress) ??
+      ""
+  }
+
+  private func bluetoothFallbackLooksLikeBLELocalName(_ value: String) -> Bool {
+    value.localizedCaseInsensitiveContains("QL-820") ||
+    value.localizedCaseInsensitiveContains("QL820")
+  }
+
   private func extraInfoValue(
     _ extraInfo: NSMutableDictionary?,
     key: String
@@ -467,6 +601,10 @@ final class BrotherPrinterBridge: NSObject {
       .replacingOccurrences(of: ":", with: "")
       .replacingOccurrences(of: "-", with: "")
       .uppercased()
+  }
+
+  private func normalizedPrinterModelName(_ value: String) -> String {
+    normalizedIdentifier(value).replacingOccurrences(of: " ", with: "")
   }
 
   private func statusPayload(for status: BRLMPrinterStatus, resolved: ResolvedPrinter) -> [String: Any] {

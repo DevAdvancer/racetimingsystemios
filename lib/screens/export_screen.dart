@@ -6,7 +6,6 @@ import 'package:race_timer/core/constants.dart';
 import 'package:race_timer/core/user_facing_error.dart';
 import 'package:race_timer/models/race.dart';
 import 'package:race_timer/models/race_result.dart';
-import 'package:race_timer/providers/admin_access_provider.dart';
 import 'package:race_timer/providers/race_provider.dart';
 import 'package:race_timer/providers/results_provider.dart';
 import 'package:race_timer/services/export_service.dart';
@@ -112,12 +111,9 @@ class _ExportScreenState extends ConsumerState<ExportScreen> {
         title: const BrandAppBarTitle(pageTitle: 'Export Results'),
         actions: [
           IconButton(
-            tooltip: 'Return to start screen',
-            onPressed: () {
-              ref.read(adminAccessProvider.notifier).lock();
-              context.go(AppRoutes.home);
-            },
-            icon: const Icon(Icons.lock_outline),
+            tooltip: 'Back to Race Dashboard',
+            onPressed: () => context.go(AppRoutes.raceDashboard),
+            icon: const Icon(Icons.arrow_back),
           ),
         ],
       ),

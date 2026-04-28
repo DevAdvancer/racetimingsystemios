@@ -48,9 +48,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Create Race'), findsAtLeastNWidgets(1));
-    expect(find.text('Available Races'), findsOneWidget);
+    expect(find.text('Choose active Race'), findsOneWidget);
     expect(find.text('Saturday Park Run'), findsOneWidget);
-    expect(find.text('Open Selected Race'), findsOneWidget);
   });
 
   testWidgets(
@@ -236,16 +235,16 @@ void main() {
 
     expect(find.text('Runner Kiosk'), findsOneWidget);
     await tester.scrollUntilVisible(
-      find.text('Start Race'),
+      find.text('Race Timing'),
       300,
       scrollable: dashboardScrollView,
     );
-    expect(find.text('Start Race'), findsOneWidget);
+    expect(find.text('Race Timing'), findsOneWidget);
     await tester.scrollUntilVisible(
-      find.text('Scan Runners'),
+      find.text('Timing Capture'),
       300,
       scrollable: dashboardScrollView,
     );
-    expect(find.text('Scan Runners'), findsOneWidget);
+    expect(find.text('Timing Capture'), findsOneWidget);
   });
 }
