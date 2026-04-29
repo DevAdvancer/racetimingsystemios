@@ -11,6 +11,7 @@ final raceResultsProvider = FutureProvider.family<List<RaceResultRow>, int>((
   ref,
   raceId,
 ) async {
+  ref.watch(databaseChangesProvider);
   return ref.watch(raceServiceProvider).getResults(raceId);
 });
 

@@ -52,6 +52,15 @@ void main() {
     );
   }
 
+  ProviderContainer buildLiveContainer() {
+    return ProviderContainer(
+      overrides: [
+        databaseHelperProvider.overrideWithValue(helper),
+        settingsServiceProvider.overrideWithValue(settingsService),
+      ],
+    );
+  }
+
   setUp(() async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
     sqfliteFfiInit();
@@ -106,6 +115,27 @@ void main() {
     final selectedRace = await container.read(currentRaceProvider.future);
 
     expect(selectedRace?.id, todayRace.id);
+  });
+
+  test('race list provider refreshes when the database changes', () async {
+    final container = buildLiveContainer();
+    addTearDown(container.dispose);
+    final subscription = container.listen(
+      raceListProvider,
+      (_, _) {},
+      fireImmediately: true,
+    );
+    addTearDown(subscription.close);
+
+    expect(await container.read(raceListProvider.future), isEmpty);
+
+    await container.read(raceServiceProvider).createRace(name: 'Live Race');
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+
+    final races = await container.read(raceListProvider.future);
+
+    expect(races, hasLength(1));
+    expect(races.single.name, 'Live Race');
   });
 
   test('keeps an organizer-selected race active after selection', () async {

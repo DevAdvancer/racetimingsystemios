@@ -5,6 +5,7 @@ import 'package:race_timer/database/database_helper.dart';
 import 'package:race_timer/models/race.dart';
 import 'package:race_timer/models/race_distance_config.dart';
 import 'package:race_timer/services/barcode_service.dart';
+import 'package:race_timer/services/database_change_notifier.dart';
 import 'package:race_timer/services/database_service.dart';
 import 'package:race_timer/services/import_service.dart';
 import 'package:race_timer/services/printer_service.dart';
@@ -18,8 +19,21 @@ final databaseHelperProvider = Provider<DatabaseHelper>((ref) {
   );
 });
 
+final databaseChangeNotifierProvider = Provider<DatabaseChangeNotifier>((ref) {
+  final notifier = DatabaseChangeNotifier();
+  ref.onDispose(notifier.dispose);
+  return notifier;
+});
+
+final databaseChangesProvider = StreamProvider<int>((ref) {
+  return ref.watch(databaseChangeNotifierProvider).changes;
+});
+
 final databaseServiceProvider = Provider<DatabaseService>((ref) {
-  return DatabaseService(ref.watch(databaseHelperProvider));
+  return DatabaseService(
+    ref.watch(databaseHelperProvider),
+    changeNotifier: ref.watch(databaseChangeNotifierProvider),
+  );
 });
 
 final barcodeServiceProvider = Provider<BarcodeService>((ref) {
@@ -44,11 +58,13 @@ final raceServiceProvider = Provider<RaceService>((ref) {
 });
 
 final raceListProvider = FutureProvider<List<Race>>((ref) {
+  ref.watch(databaseChangesProvider);
   return ref.watch(raceServiceProvider).listRaces();
 });
 
 final raceDistanceConfigsProvider =
     FutureProvider.family<List<RaceDistanceConfig>, int>((ref, raceId) {
+      ref.watch(databaseChangesProvider);
       return ref.watch(raceServiceProvider).listRaceDistanceConfigs(raceId);
     });
 
@@ -63,6 +79,8 @@ class CurrentRaceController extends AsyncNotifier<Race?> {
 
   @override
   FutureOr<Race?> build() async {
+    ref.watch(databaseChangesProvider);
+
     final runningRace = await _raceService.getRunningRace();
     if (runningRace != null) {
       return runningRace;

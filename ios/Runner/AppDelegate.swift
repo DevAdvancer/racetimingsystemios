@@ -282,11 +282,35 @@ final class BrotherPrinterBridge: NSObject {
         driver.closeChannel()
       }
 
-      guard let printSettings = self.makePrintSettings(media: request.media) else {
+      let statusResult = driver.getPrinterStatus()
+      guard statusResult.error.code == .noError, let status = statusResult.status else {
         result(
           self.statusMap(
             health: "error",
-            message: "The saved label size is not supported for the Brother QL-820NWB.",
+            message: self.statusErrorMessage(for: resolved, error: statusResult.error.code),
+            host: resolved.host
+          )
+        )
+        return
+      }
+
+      if status.errorCode != .noError {
+        result(self.statusPayload(for: status, resolved: resolved))
+        return
+      }
+
+      let loadedMediaDescription = self.describeMedia(status.mediaInfo)
+      guard let printSettings = self.makePrintSettings(
+        media: request.media,
+        loadedMedia: status.mediaInfo
+      ) else {
+        let mediaMessage = loadedMediaDescription.map {
+          "The loaded label size \($0) is not supported for this app's Brother QL-820NWB labels."
+        } ?? "The saved label size is not supported for the Brother QL-820NWB."
+        result(
+          self.statusMap(
+            health: "error",
+            message: mediaMessage,
             host: resolved.host
           )
         )
@@ -344,7 +368,8 @@ final class BrotherPrinterBridge: NSObject {
         self.statusMap(
           health: "success",
           message: "\(successMessage) \(resolved.connectionType.transportName) target: \(resolved.host).",
-          host: resolved.host
+          host: resolved.host,
+          loadedMedia: loadedMediaDescription
         )
       )
     }
@@ -623,7 +648,8 @@ final class BrotherPrinterBridge: NSObject {
     return statusMap(
       health: "ready",
       message: "\(discoveryPrefix)\(modelName) is ready over \(resolved.connectionType.transportName).\(mediaDescription.map { " Loaded media: \($0)." } ?? "")",
-      host: resolved.host
+      host: resolved.host,
+      loadedMedia: mediaDescription
     )
   }
 
@@ -647,32 +673,117 @@ final class BrotherPrinterBridge: NSObject {
     return nil
   }
 
-  private func makePrintSettings(media: String?) -> BRLMQLPrintSettings? {
+  private func makePrintSettings(
+    media: String?,
+    loadedMedia: BRLMMediaInfo? = nil
+  ) -> BRLMQLPrintSettings? {
     guard let printSettings = BRLMQLPrintSettings(defaultPrintSettingsWith: .QL_820NWB) else {
       return nil
     }
 
-    let mediaValue = (media ?? "").lowercased()
-    switch mediaValue {
-    case "", "62mm", "62", "62mm continuous", "62 continuous", "62mm roll", "62 roll":
-      printSettings.labelSize = .rollW62
-    case "62mm red/black", "62mm red black", "62mm rb":
-      printSettings.labelSize = .rollW62RB
-    case "62x29", "62mm x 29mm", "62mm die-cut 29":
-      printSettings.labelSize = .dieCutW62H29
-    case "62x60", "62mm x 60mm":
-      printSettings.labelSize = .dieCutW62H60
-    case "62x75", "62mm x 75mm":
-      printSettings.labelSize = .dieCutW62H75
-    case "62x100", "62mm x 100mm":
-      printSettings.labelSize = .dieCutW62H100
-    default:
+    guard let labelSize = qlLabelSize(for: loadedMedia) ?? qlLabelSize(for: media) else {
       return nil
     }
+    printSettings.labelSize = labelSize
 
     printSettings.autoCut = true
     printSettings.cutAtEnd = true
     return printSettings
+  }
+
+  private func qlLabelSize(for mediaInfo: BRLMMediaInfo?) -> BRLMQLPrintSettingsLabelSize? {
+    guard let mediaInfo else {
+      return nil
+    }
+
+    if mediaInfo.isHeightInfinite {
+      switch mediaInfo.width_mm {
+      case 12:
+        return .rollW12
+      case 29:
+        return .rollW29
+      case 38:
+        return .rollW38
+      case 50:
+        return .rollW50
+      case 54:
+        return .rollW54
+      case 62:
+        return .rollW62
+      default:
+        return nil
+      }
+    }
+
+    switch (mediaInfo.width_mm, mediaInfo.height_mm) {
+    case (17, 54):
+      return .dieCutW17H54
+    case (17, 87):
+      return .dieCutW17H87
+    case (23, 23):
+      return .dieCutW23H23
+    case (29, 42):
+      return .dieCutW29H42
+    case (29, 90):
+      return .dieCutW29H90
+    case (38, 90):
+      return .dieCutW38H90
+    case (39, 48):
+      return .dieCutW39H48
+    case (52, 29):
+      return .dieCutW52H29
+    case (54, 29):
+      return .dieCutW54H29
+    case (60, 86):
+      return .dieCutW60H86
+    case (62, 29):
+      return .dieCutW62H29
+    case (62, 60):
+      return .dieCutW62H60
+    case (62, 75):
+      return .dieCutW62H75
+    case (62, 100):
+      return .dieCutW62H100
+    default:
+      return nil
+    }
+  }
+
+  private func qlLabelSize(for media: String?) -> BRLMQLPrintSettingsLabelSize? {
+    let mediaValue = normalizedMediaValue(media)
+    switch mediaValue {
+    case "", "62", "62mm", "62mmcontinuous", "62continuous", "62mmroll", "62roll":
+      return .rollW62
+    case "62mmredblack", "62redblack", "62mmrb", "62rb":
+      return .rollW62RB
+    case "29", "29mm", "29mmcontinuous", "29continuous", "29mmroll", "29roll":
+      return .rollW29
+    case "29x42", "29mmx42mm", "29mmdiecut42":
+      return .dieCutW29H42
+    case "29x90", "29mmx90mm", "29mmdiecut90":
+      return .dieCutW29H90
+    case "38x90", "38mmx90mm", "38mmdiecut90":
+      return .dieCutW38H90
+    case "62x29", "62mmx29mm", "62mmdiecut29":
+      return .dieCutW62H29
+    case "62x60", "62mmx60mm":
+      return .dieCutW62H60
+    case "62x75", "62mmx75mm":
+      return .dieCutW62H75
+    case "62x100", "62mmx100mm":
+      return .dieCutW62H100
+    default:
+      return nil
+    }
+  }
+
+  private func normalizedMediaValue(_ value: String?) -> String {
+    (value ?? "")
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+      .lowercased()
+      .replacingOccurrences(of: " ", with: "")
+      .replacingOccurrences(of: "-", with: "")
+      .replacingOccurrences(of: "/", with: "")
   }
 
   private func renderLabelImage(
@@ -772,6 +883,8 @@ final class BrotherPrinterBridge: NSObject {
 
   private func printErrorMessage(for resolved: ResolvedPrinter, error: BRLMPrintErrorCode) -> String {
     switch error {
+    case .printSettingsError, .printSettingsNotSupportError, .setLabelSizeError:
+      return "The Brother printer rejected the label size. Check that the app label size matches the loaded roll in the printer."
     case .printerStatusErrorPaperEmpty:
       return "The Brother printer is out of labels."
     case .printerStatusErrorCoverOpen:
@@ -782,6 +895,8 @@ final class BrotherPrinterBridge: NSObject {
       return "The Brother printer appears to be turned off."
     case .printerStatusErrorPaperJam:
       return "The Brother printer reported a label jam."
+    case .printerStatusErrorMediaCannotBeFed:
+      return "The Brother printer could not feed the loaded label roll. Check that the label size is seated correctly."
     case .printerStatusErrorCommunicationError, .channelErrorStreamStatusError, .channelTimeout:
       return "The iPad lost communication with the Brother printer while printing."
     case .noError:
@@ -826,13 +941,21 @@ final class BrotherPrinterBridge: NSObject {
     }
   }
 
-  private func statusMap(health: String, message: String, host: String?) -> [String: Any] {
+  private func statusMap(
+    health: String,
+    message: String,
+    host: String?,
+    loadedMedia: String? = nil
+  ) -> [String: Any] {
     var payload: [String: Any] = [
       "health": health,
       "message": message
     ]
     if let host, !host.isEmpty {
       payload["host"] = host
+    }
+    if let loadedMedia, !loadedMedia.isEmpty {
+      payload["loadedMedia"] = loadedMedia
     }
     return payload
   }

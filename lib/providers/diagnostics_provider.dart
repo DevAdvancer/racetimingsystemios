@@ -26,6 +26,7 @@ class DiagnosticsController extends AsyncNotifier<DiagnosticsReport> {
 
   @override
   FutureOr<DiagnosticsReport> build() {
+    ref.watch(databaseChangesProvider);
     return _diagnosticsService.run();
   }
 

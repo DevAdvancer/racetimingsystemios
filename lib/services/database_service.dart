@@ -9,18 +9,29 @@ import 'package:race_timer/models/race_status.dart';
 import 'package:race_timer/models/runner.dart';
 import 'package:race_timer/models/runner_points_summary.dart';
 import 'package:race_timer/models/scan_event_log.dart';
+import 'package:race_timer/services/database_change_notifier.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 class DatabaseService {
-  DatabaseService(this._helper);
+  DatabaseService(this._helper, {DatabaseChangeNotifier? changeNotifier})
+    : _changeNotifier = changeNotifier;
 
   final DatabaseHelper _helper;
+  final DatabaseChangeNotifier? _changeNotifier;
 
   Future<T> transaction<T>(
     Future<T> Function(DatabaseExecutor executor) action,
   ) async {
     final db = await _helper.database;
-    return db.transaction(action);
+    final result = await db.transaction(action);
+    _changeNotifier?.notifyChanged();
+    return result;
+  }
+
+  void _notifyChangedIfOwned(DatabaseExecutor? executor) {
+    if (executor == null) {
+      _changeNotifier?.notifyChanged();
+    }
   }
 
   Future<DatabaseExecutor> _resolveExecutor(DatabaseExecutor? executor) async {
@@ -36,7 +47,10 @@ class DatabaseService {
     return result.isNotEmpty && result.first.values.first == 'ok';
   }
 
-  Future<void> resetAllData() => _helper.resetDatabase();
+  Future<void> resetAllData() async {
+    await _helper.resetDatabase();
+    _changeNotifier?.notifyChanged();
+  }
 
   static String normalizeName(String value) {
     return value.toLowerCase().replaceAll(RegExp(r'\s+'), ' ').trim();
@@ -184,6 +198,7 @@ class DatabaseService {
       'entry_fee_minor': entryFeeMinor,
       'currency_code': currencyCode.toUpperCase(),
     });
+    _notifyChangedIfOwned(executor);
     return Race(
       id: id,
       name: name,
@@ -216,6 +231,7 @@ class DatabaseService {
       where: 'id = ?',
       whereArgs: <Object?>[race.id],
     );
+    _notifyChangedIfOwned(executor);
     return race;
   }
 
@@ -270,6 +286,7 @@ class DatabaseService {
           where: 'id = ?',
           whereArgs: <Object?>[id],
         );
+        _notifyChangedIfOwned(executor);
         return RaceDistanceConfig(
           id: id,
           raceId: raceId,
@@ -282,6 +299,7 @@ class DatabaseService {
       }
     }
 
+    _notifyChangedIfOwned(executor);
     return RaceDistanceConfig(
       id: id,
       raceId: raceId,
@@ -333,6 +351,7 @@ class DatabaseService {
       whereArgs: <Object?>[id],
     );
 
+    _notifyChangedIfOwned(executor);
     return existing.copyWith(
       name: name.trim(),
       distanceMiles: distanceMiles,
@@ -369,6 +388,7 @@ class DatabaseService {
     );
 
     if (!existing.isPrimary) {
+      _notifyChangedIfOwned(executor);
       return;
     }
 
@@ -377,6 +397,7 @@ class DatabaseService {
       executor: db,
     );
     if (remaining.isEmpty) {
+      _notifyChangedIfOwned(executor);
       return;
     }
     await db.update(
@@ -385,6 +406,7 @@ class DatabaseService {
       where: 'id = ?',
       whereArgs: <Object?>[remaining.first.id],
     );
+    _notifyChangedIfOwned(executor);
   }
 
   Future<Runner> createRunner({
@@ -416,6 +438,7 @@ class DatabaseService {
       'city': _normalizeOptionalText(city),
       'gender': _normalizeOptionalText(gender),
     });
+    _notifyChangedIfOwned(executor);
     return Runner(
       id: id,
       name: name.trim(),
@@ -475,6 +498,7 @@ class DatabaseService {
       whereArgs: <Object?>[runnerId],
     );
 
+    _notifyChangedIfOwned(executor);
     return (await getRunner(runnerId, executor: db))!;
   }
 
@@ -504,6 +528,7 @@ class DatabaseService {
       where: 'id = ?',
       whereArgs: <Object?>[runnerId],
     );
+    _notifyChangedIfOwned(executor);
     return (await getRunner(runnerId, executor: db))!;
   }
 
@@ -526,6 +551,7 @@ class DatabaseService {
       whereArgs: <Object?>[runnerId],
     );
     final runner = await getRunner(runnerId, executor: db);
+    _notifyChangedIfOwned(executor);
     return runner!;
   }
 
@@ -615,6 +641,7 @@ class DatabaseService {
       'elapsed_time_ms': null,
       'pace_override': _normalizeOptionalText(paceOverride),
     });
+    _notifyChangedIfOwned(executor);
     return RaceEntry(
       id: id,
       runnerId: runnerId,
@@ -673,6 +700,7 @@ class DatabaseService {
       whereArgs: <Object?>[entryId],
     );
 
+    _notifyChangedIfOwned(executor);
     return (await getEntry(entryId, executor: db))!;
   }
 
@@ -689,6 +717,7 @@ class DatabaseService {
       whereArgs: <Object?>[entryId],
     );
     final entry = await getEntry(entryId, executor: db);
+    _notifyChangedIfOwned(executor);
     return entry!;
   }
 
@@ -775,6 +804,7 @@ class DatabaseService {
       whereArgs: <Object?>[entryId],
     );
     final updated = await getEntry(entryId, executor: db);
+    _notifyChangedIfOwned(executor);
     return updated!;
   }
 
@@ -802,6 +832,7 @@ class DatabaseService {
       whereArgs: <Object?>[entryId],
     );
     final updated = await getEntry(entryId, executor: db);
+    _notifyChangedIfOwned(executor);
     return updated!;
   }
 
@@ -830,6 +861,7 @@ class DatabaseService {
     );
 
     final updated = await getEntry(entryId, executor: db);
+    _notifyChangedIfOwned(executor);
     return updated!;
   }
 
@@ -846,6 +878,7 @@ class DatabaseService {
       'points': points,
       'created_at': DateTime.now().toUtc().millisecondsSinceEpoch,
     });
+    _notifyChangedIfOwned(executor);
   }
 
   Future<List<RaceEntry>> listUnfinishedEntries(
@@ -1293,6 +1326,7 @@ class DatabaseService {
       'message': message.trim(),
       'created_at': DateTime.now().toUtc().millisecondsSinceEpoch,
     });
+    _notifyChangedIfOwned(executor);
   }
 
   Future<List<ScanEventLog>> listScanEvents({

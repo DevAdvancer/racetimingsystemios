@@ -36,6 +36,7 @@ class AppRoutes {
   static const home = '/';
   static const adminHome = '/admin';
   static const raceDashboard = '/race-dashboard';
+  static const rosterTools = '/roster-tools';
   static const registration = '/register';
   static const raceControl = '/race-control';
   static const scanner = '/scan';

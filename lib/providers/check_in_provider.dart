@@ -14,6 +14,7 @@ final checkInProvider = AsyncNotifierProvider<CheckInController, CheckInState>(
 class CheckInController extends AsyncNotifier<CheckInState> {
   @override
   FutureOr<CheckInState> build() async {
+    ref.watch(databaseChangesProvider);
     final race = await ref.watch(currentRaceProvider.future);
     return _buildState(
       race: race,

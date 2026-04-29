@@ -107,9 +107,7 @@ class _OverallPointsScreenState extends ConsumerState<OverallPointsScreen> {
           tone: StatusBannerTone.info,
         ),
         const SizedBox(height: 16),
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
+        _MetricGrid(
           children: [
             _MetricTile(
               label: 'Latest Race',
@@ -251,6 +249,44 @@ class _OverallPointsTable extends StatelessWidget {
   }
 }
 
+class _MetricGrid extends StatelessWidget {
+  const _MetricGrid({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final crossAxisCount = switch (constraints.maxWidth) {
+          >= 960 => 4,
+          >= 520 => 2,
+          _ => 1,
+        };
+        const tileHeight = 116.0;
+        const spacing = 12.0;
+        final rowCount = (children.length / crossAxisCount).ceil();
+
+        return SizedBox(
+          height: rowCount * tileHeight + (rowCount - 1) * spacing,
+          child: GridView.builder(
+            primary: false,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: crossAxisCount,
+              mainAxisExtent: tileHeight,
+              mainAxisSpacing: spacing,
+              crossAxisSpacing: spacing,
+            ),
+            itemCount: children.length,
+            itemBuilder: (context, index) => children[index],
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _MetricTile extends StatelessWidget {
   const _MetricTile({required this.label, required this.value});
 
@@ -261,11 +297,10 @@ class _MetricTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return Container(
-      width: 170,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: colorScheme.primaryContainer.withValues(alpha: 0.7),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: colorScheme.outlineVariant),
       ),
       child: Column(

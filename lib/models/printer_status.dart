@@ -1,11 +1,17 @@
 enum PrinterHealth { ready, success, notConfigured, unsupported, error }
 
 class PrinterStatus {
-  const PrinterStatus({required this.health, required this.message, this.host});
+  const PrinterStatus({
+    required this.health,
+    required this.message,
+    this.host,
+    this.loadedMedia,
+  });
 
   final PrinterHealth health;
   final String message;
   final String? host;
+  final String? loadedMedia;
 
   bool get isReady =>
       health == PrinterHealth.ready || health == PrinterHealth.success;
@@ -20,11 +26,16 @@ class PrinterStatus {
     );
   }
 
-  factory PrinterStatus.success({String? host, String? message}) {
+  factory PrinterStatus.success({
+    String? host,
+    String? message,
+    String? loadedMedia,
+  }) {
     return PrinterStatus(
       health: PrinterHealth.success,
       message: message ?? 'Label printed successfully.',
       host: host,
+      loadedMedia: loadedMedia,
     );
   }
 
@@ -62,6 +73,7 @@ class PrinterStatus {
       health: health,
       message: (map['message'] as String?) ?? 'Unknown printer status.',
       host: map['host'] as String?,
+      loadedMedia: map['loadedMedia'] as String?,
     );
   }
 }

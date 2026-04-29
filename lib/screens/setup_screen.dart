@@ -8,6 +8,7 @@ import 'package:race_timer/core/constants.dart';
 import 'package:race_timer/core/user_facing_error.dart';
 import 'package:race_timer/models/app_settings.dart';
 import 'package:race_timer/models/discovered_printer.dart';
+import 'package:race_timer/models/printer_status.dart';
 import 'package:race_timer/providers/admin_access_provider.dart';
 import 'package:race_timer/providers/check_in_provider.dart';
 import 'package:race_timer/providers/race_provider.dart';
@@ -116,15 +117,15 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       }
       if (defaultPrinter != null) {
         _printerHostController.text = defaultPrinter.host;
-        await _savePrinterSettings();
+        final status = await _saveAndVerifyDiscoveredPrinter();
         message =
-            '${defaultPrinter.displayName} matched ${AppConstants.defaultPrinterHost} and was saved for this iPad.';
+            '${defaultPrinter.displayName} matched ${AppConstants.defaultPrinterHost} and was saved for this iPad. ${_printerStatusSummary(status)}';
       } else if (printers.length == 1 &&
           _printerHostController.text.trim().isEmpty) {
         _printerHostController.text = printers.first.host;
-        await _savePrinterSettings();
+        final status = await _saveAndVerifyDiscoveredPrinter();
         message =
-            '${printers.first.displayName} was found and saved for this iPad.';
+            '${printers.first.displayName} was found and saved for this iPad. ${_printerStatusSummary(status)}';
       }
 
       setState(() {
@@ -157,14 +158,25 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       _printerDiscoveryMessage =
           'Using ${printer.displayName} as ${printer.modelName}. Saving this selection for this iPad.';
     });
-    await _savePrinterSettings();
+    final status = await _saveAndVerifyDiscoveredPrinter();
     if (!mounted) {
       return;
     }
     setState(() {
       _printerDiscoveryMessage =
-          'Using ${printer.displayName} as ${printer.modelName}. This printer was saved for this iPad.';
+          'Using ${printer.displayName} as ${printer.modelName}. This printer was saved for this iPad. ${_printerStatusSummary(status)}';
     });
+  }
+
+  Future<PrinterStatus> _saveAndVerifyDiscoveredPrinter() async {
+    await _savePrinterSettings();
+    final status = await ref.read(printerServiceProvider).configure();
+    final loadedMedia = _loadedMediaFromStatus(status);
+    if (loadedMedia != null) {
+      _printerMediaController.text = loadedMedia;
+      await _savePrinterSettings();
+    }
+    return status;
   }
 
   Future<AppSettings> _savePrinterSettings() async {
@@ -185,6 +197,30 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
     final defaultName = AppConstants.defaultPrinterHost.toLowerCase();
     return printer.host.toLowerCase() == defaultName ||
         printer.displayName.toLowerCase() == defaultName;
+  }
+
+  String? _loadedMediaFromStatus(PrinterStatus status) {
+    final nativeMedia = status.loadedMedia?.trim();
+    if (nativeMedia != null && nativeMedia.isNotEmpty) {
+      return nativeMedia;
+    }
+
+    final match = RegExp(
+      r'Loaded media:\s*([^\.]+)',
+      caseSensitive: false,
+    ).firstMatch(status.message);
+    return match?.group(1)?.trim();
+  }
+
+  String _printerStatusSummary(PrinterStatus status) {
+    final loadedMedia = _loadedMediaFromStatus(status);
+    if (status.isReady && loadedMedia != null) {
+      return 'Verified connection and updated label size to $loadedMedia.';
+    }
+    if (status.isReady) {
+      return 'Verified connection.';
+    }
+    return 'Saved, but verification needs attention: ${status.message}';
   }
 
   @override
@@ -462,11 +498,11 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                       ),
                       label: Text(
                         _discoveringPrinters
-                            ? 'Searching...'
+                            ? 'Finding and verifying...'
                             : _printerConnectionType ==
                                   PrinterConnectionType.network
-                            ? 'Find Available Wi-Fi Printers'
-                            : 'Find Available Bluetooth Printers',
+                            ? 'Find and Verify Wi-Fi Printer'
+                            : 'Find and Verify Bluetooth Printer',
                       ),
                     ),
                     if (_printerDiscoveryMessage != null) ...[

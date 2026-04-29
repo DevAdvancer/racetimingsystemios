@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
+import 'package:race_timer/core/app_navigation.dart';
 import 'package:race_timer/core/constants.dart';
 import 'package:race_timer/core/user_facing_error.dart';
 import 'package:race_timer/models/check_in_result.dart';
@@ -32,33 +32,16 @@ class RaceDashboardScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         title: const BrandAppBarTitle(pageTitle: 'Race Day Console'),
         actions: [
           IconButton(
             tooltip: 'Back to Choose Race',
-            onPressed: () => context.go(AppRoutes.adminHome),
+            onPressed: () => goToAppRoute(context, AppRoutes.adminHome),
             icon: const Icon(Icons.arrow_back),
           ),
-          PopupMenuButton<String>(
-            onSelected: (value) => context.go(value),
-            itemBuilder: (context) => const [
-              PopupMenuItem(
-                value: AppRoutes.adminHome,
-                child: Text('Choose Race'),
-              ),
-              PopupMenuItem(
-                value: AppRoutes.setup,
-                child: Text('Organizer Tools'),
-              ),
-              PopupMenuItem(
-                value: AppRoutes.results,
-                child: Text('Live Results'),
-              ),
-              PopupMenuItem(
-                value: AppRoutes.export,
-                child: Text('Export Results'),
-              ),
-            ],
+          _DashboardOverflowMenu(
+            onSelected: (value) => goToAppRoute(context, value),
           ),
           const SizedBox(width: 12),
         ],
@@ -133,12 +116,12 @@ class RaceDashboardScreen extends ConsumerWidget {
               LayoutBuilder(
                 builder: (context, constraints) {
                   final crossAxisCount = switch (constraints.maxWidth) {
-                    >= 1320 => 3,
+                    >= 1320 => 4,
                     >= 760 => 2,
                     _ => 1,
                   };
                   final mainAxisExtent = switch (crossAxisCount) {
-                    3 => 290.0,
+                    4 => 290.0,
                     2 => 310.0,
                     _ => 270.0,
                   };
@@ -149,7 +132,7 @@ class RaceDashboardScreen extends ConsumerWidget {
                           'Return to the large runner-facing check-in screen.',
                       icon: Icons.badge_outlined,
                       onTap: () {
-                        context.go(AppRoutes.registration);
+                        goToAppRoute(context, AppRoutes.registration);
                         ref.read(adminAccessProvider.notifier).lock();
                       },
                     ),
@@ -157,14 +140,21 @@ class RaceDashboardScreen extends ConsumerWidget {
                       title: 'Race Timing',
                       subtitle: 'Manage gun time, stop time, and race status.',
                       icon: Icons.flag_circle,
-                      onTap: () => context.go(AppRoutes.raceControl),
+                      onTap: () => goToAppRoute(context, AppRoutes.raceControl),
                     ),
                     PrimaryActionTile(
                       title: 'Timing Capture',
                       subtitle:
                           'Capture barcode scans for early starts and finishes.',
                       icon: Icons.qr_code_scanner,
-                      onTap: () => context.go(AppRoutes.scanner),
+                      onTap: () => goToAppRoute(context, AppRoutes.scanner),
+                    ),
+                    PrimaryActionTile(
+                      title: 'Roster Tools',
+                      subtitle:
+                          'Edit racer data, distances, and points on one page.',
+                      icon: Icons.groups_2_outlined,
+                      onTap: () => goToAppRoute(context, AppRoutes.rosterTools),
                     ),
                   ];
 
@@ -207,80 +197,6 @@ class RaceDashboardScreen extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: 24),
-              currentRace.when(
-                data: (race) => _RacePointsCard(
-                  race: race,
-                  onAwardPoints: race == null
-                      ? null
-                      : () => _awardPoints(context, ref, race),
-                  onDownloadPoints: race == null
-                      ? null
-                      : () => _downloadPoints(context, ref, race),
-                ),
-                loading: () => const LinearProgressIndicator(),
-                error: (error, stackTrace) => StatusBanner(
-                  title: 'Points tools unavailable',
-                  message: userFacingErrorMessage(
-                    error,
-                    fallback:
-                        'The racer points tools could not load right now.',
-                  ),
-                  tone: StatusBannerTone.error,
-                ),
-              ),
-              const SizedBox(height: 24),
-              currentRace.when(
-                data: (race) => _RaceDistanceConfigsCard(
-                  race: race,
-                  onAddDistance: race == null
-                      ? null
-                      : () => _saveDistanceConfig(context, ref, race),
-                  onEditDistance: race == null
-                      ? null
-                      : (config) => _saveDistanceConfig(
-                          context,
-                          ref,
-                          race,
-                          existing: config,
-                        ),
-                  onDeleteDistance: race == null
-                      ? null
-                      : (config) =>
-                            _deleteDistanceConfig(context, ref, race, config),
-                ),
-                loading: () => const LinearProgressIndicator(),
-                error: (error, stackTrace) => StatusBanner(
-                  title: 'Distance setup unavailable',
-                  message: userFacingErrorMessage(
-                    error,
-                    fallback:
-                        'The alternate distance setup card could not load right now.',
-                  ),
-                  tone: StatusBannerTone.error,
-                ),
-              ),
-              const SizedBox(height: 24),
-              currentRace.when(
-                data: (race) => _RaceDatabaseCard(
-                  race: race,
-                  onDownloadResultsPdf: race == null
-                      ? null
-                      : () => _downloadResultsPdf(context, ref, race),
-                  onEditRow: race == null
-                      ? null
-                      : (row) => _editRosterEntry(context, ref, race, row),
-                ),
-                loading: () => const LinearProgressIndicator(),
-                error: (error, stackTrace) => StatusBanner(
-                  title: 'Database editor unavailable',
-                  message: userFacingErrorMessage(
-                    error,
-                    fallback:
-                        'The editable race database view could not load right now.',
-                  ),
-                  tone: StatusBannerTone.error,
-                ),
-              ),
             ],
           ),
         ),
@@ -785,6 +701,208 @@ class RaceDashboardScreen extends ConsumerWidget {
   }
 }
 
+class _DashboardOverflowMenu extends StatelessWidget {
+  const _DashboardOverflowMenu({required this.onSelected});
+
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return PopupMenuButton<String>(
+      tooltip: 'More options',
+      icon: const Icon(Icons.more_vert),
+      iconColor: colorScheme.onSurface,
+      onSelected: onSelected,
+      itemBuilder: (context) => [
+        const PopupMenuItem(
+          value: AppRoutes.adminHome,
+          child: Text('Choose Race'),
+        ),
+        const PopupMenuItem(
+          value: AppRoutes.rosterTools,
+          child: Text('Roster Tools'),
+        ),
+        const PopupMenuItem(
+          value: AppRoutes.setup,
+          child: Text('Organizer Tools'),
+        ),
+        const PopupMenuItem(
+          value: AppRoutes.results,
+          child: Text('Live Results'),
+        ),
+        const PopupMenuItem(
+          value: AppRoutes.export,
+          child: Text('Export Results'),
+        ),
+      ],
+    );
+  }
+}
+
+class RosterToolsScreen extends RaceDashboardScreen {
+  const RosterToolsScreen({super.key});
+
+  void _returnToDashboard(BuildContext context) {
+    goToAppRoute(context, AppRoutes.raceDashboard);
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final currentRace = ref.watch(currentRaceProvider);
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Scaffold(
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        title: const BrandAppBarTitle(pageTitle: 'Roster Tools'),
+        actions: [
+          IconButton(
+            tooltip: 'Back to Race Dashboard',
+            onPressed: () => _returnToDashboard(context),
+            icon: const Icon(Icons.arrow_back),
+          ),
+          const SizedBox(width: 12),
+        ],
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: ListView(
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(28),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(32),
+                  color: colorScheme.surfaceContainerLowest,
+                  border: Border.all(color: colorScheme.outlineVariant),
+                ),
+                child: currentRace.when(
+                  data: (race) => Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Roster Tools',
+                        style: Theme.of(context).textTheme.headlineLarge,
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        race == null
+                            ? 'Choose a race before editing roster details.'
+                            : 'Active race: ${race.name} • ${race.statusLabel}',
+                        style: Theme.of(context).textTheme.bodyLarge,
+                      ),
+                      const SizedBox(height: 20),
+                      StatusBanner(
+                        title: race == null
+                            ? 'No active race'
+                            : 'Roster tools for ${race.name}',
+                        message: race == null
+                            ? 'Return to Choose Race, select a race, then open Roster Tools again.'
+                            : 'Edit saved racer data, configure alternate distances, and assign racer points from this page.',
+                        tone: race == null
+                            ? StatusBannerTone.warning
+                            : StatusBannerTone.info,
+                      ),
+                    ],
+                  ),
+                  loading: () => const LinearProgressIndicator(),
+                  error: (error, stackTrace) => StatusBanner(
+                    title: 'Unable to load race',
+                    message: userFacingErrorMessage(
+                      error,
+                      fallback:
+                          'The selected race could not be opened. Please go back and choose the race again.',
+                    ),
+                    tone: StatusBannerTone.error,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              currentRace.when(
+                data: (race) => _RaceDatabaseCard(
+                  race: race,
+                  onDownloadResultsPdf: race == null
+                      ? null
+                      : () => _downloadResultsPdf(context, ref, race),
+                  onEditRow: race == null
+                      ? null
+                      : (row) => _editRosterEntry(context, ref, race, row),
+                ),
+                loading: () => const LinearProgressIndicator(),
+                error: (error, stackTrace) => StatusBanner(
+                  title: 'Database editor unavailable',
+                  message: userFacingErrorMessage(
+                    error,
+                    fallback:
+                        'The editable race database view could not load right now.',
+                  ),
+                  tone: StatusBannerTone.error,
+                ),
+              ),
+              const SizedBox(height: 24),
+              currentRace.when(
+                data: (race) => _RaceDistanceConfigsCard(
+                  race: race,
+                  onAddDistance: race == null
+                      ? null
+                      : () => _saveDistanceConfig(context, ref, race),
+                  onEditDistance: race == null
+                      ? null
+                      : (config) => _saveDistanceConfig(
+                          context,
+                          ref,
+                          race,
+                          existing: config,
+                        ),
+                  onDeleteDistance: race == null
+                      ? null
+                      : (config) =>
+                            _deleteDistanceConfig(context, ref, race, config),
+                ),
+                loading: () => const LinearProgressIndicator(),
+                error: (error, stackTrace) => StatusBanner(
+                  title: 'Distance setup unavailable',
+                  message: userFacingErrorMessage(
+                    error,
+                    fallback:
+                        'The alternate distance setup card could not load right now.',
+                  ),
+                  tone: StatusBannerTone.error,
+                ),
+              ),
+              const SizedBox(height: 24),
+              currentRace.when(
+                data: (race) => _RacePointsCard(
+                  race: race,
+                  onAwardPoints: race == null
+                      ? null
+                      : () => _awardPoints(context, ref, race),
+                  onDownloadPoints: race == null
+                      ? null
+                      : () => _downloadPoints(context, ref, race),
+                ),
+                loading: () => const LinearProgressIndicator(),
+                error: (error, stackTrace) => StatusBanner(
+                  title: 'Points tools unavailable',
+                  message: userFacingErrorMessage(
+                    error,
+                    fallback:
+                        'The racer points tools could not load right now.',
+                  ),
+                  tone: StatusBannerTone.error,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _RaceRosterToolsCard extends StatelessWidget {
   const _RaceRosterToolsCard({
     required this.race,
@@ -801,65 +919,68 @@ class _RaceRosterToolsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Race Roster Tools',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 10),
-            Text(
-              race == null
-                  ? 'Choose a race first. Runner import and manual add only appear inside an open race dashboard.'
-                  : 'Import the runner spreadsheet for ${race!.name}, or add a new runner outside the Excel list right here.',
-              style: Theme.of(context).textTheme.bodyLarge,
-            ),
-            const SizedBox(height: 18),
-            Wrap(
-              spacing: 14,
-              runSpacing: 14,
-              children: [
-                FilledButton.icon(
-                  onPressed: onImportRunners,
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size(240, 64),
-                    textStyle: Theme.of(context).textTheme.titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w700),
+      child: SizedBox(
+        width: double.infinity,
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Race Roster Tools',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 10),
+              Text(
+                race == null
+                    ? 'Choose a race first. Runner import and manual add only appear inside an open race dashboard.'
+                    : 'Import the runner spreadsheet for ${race!.name}, or add a new runner outside the Excel list right here.',
+                style: Theme.of(context).textTheme.bodyLarge,
+              ),
+              const SizedBox(height: 18),
+              Wrap(
+                spacing: 14,
+                runSpacing: 14,
+                children: [
+                  FilledButton.icon(
+                    onPressed: onImportRunners,
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(240, 64),
+                      textStyle: Theme.of(context).textTheme.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                    icon: const Icon(Icons.upload_file),
+                    label: const Text('Import Runners'),
                   ),
-                  icon: const Icon(Icons.upload_file),
-                  label: const Text('Import Runners'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: onAddRunner,
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(240, 64),
-                    textStyle: Theme.of(context).textTheme.titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w700),
+                  OutlinedButton.icon(
+                    onPressed: onAddRunner,
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(240, 64),
+                      textStyle: Theme.of(context).textTheme.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                    icon: const Icon(Icons.person_add_alt_1),
+                    label: const Text('Add New Runner'),
                   ),
-                  icon: const Icon(Icons.person_add_alt_1),
-                  label: const Text('Add New Runner'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: onDownloadQrPacketPdf,
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(240, 64),
-                    textStyle: Theme.of(context).textTheme.titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w700),
+                  OutlinedButton.icon(
+                    onPressed: onDownloadQrPacketPdf,
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(240, 64),
+                      textStyle: Theme.of(context).textTheme.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                    icon: const Icon(Icons.picture_as_pdf_outlined),
+                    label: const Text('Download Barcode Packet'),
                   ),
-                  icon: const Icon(Icons.picture_as_pdf_outlined),
-                  label: const Text('Download Barcode Packet'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Text(
-              'Use the import for the Excel or CSV roster. The optional Distance column can auto-assign full or alternate distances. Use Add New Runner for walk-ups or anyone missing from the spreadsheet. Download Barcode Packet creates a printable PDF with the START RACE barcode and one barcode row for every runner in this race.',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-          ],
+                ],
+              ),
+              const SizedBox(height: 14),
+              Text(
+                'Use the import for the Excel or CSV roster. The optional Distance column can auto-assign full or alternate distances. Use Add New Runner for walk-ups or anyone missing from the spreadsheet. Download Barcode Packet creates a printable PDF with the START RACE barcode and one barcode row for every runner in this race.',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -886,103 +1007,109 @@ class _RacePointsCard extends ConsumerWidget {
         : ref.watch(racePointsProvider(race!.id));
 
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Racer Points', style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 10),
-            Text(
-              race == null
-                  ? 'Choose a race first. Points are assigned to racers from the open race roster and saved locally on this device.'
-                  : 'Add points to a racer in ${race!.name}. Saved totals always add on top of any previous points already stored in SQLite.',
-              style: Theme.of(context).textTheme.bodyLarge,
-            ),
-            const SizedBox(height: 18),
-            pointsAsync.when(
-              data: (summaries) {
-                final racersWithPoints = summaries
-                    .where((summary) => summary.totalPoints > 0)
-                    .toList(growable: false);
-                final preview = racersWithPoints
-                    .take(5)
-                    .toList(growable: false);
+      child: SizedBox(
+        width: double.infinity,
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Racer Points',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 10),
+              Text(
+                race == null
+                    ? 'Choose a race first. Points are assigned to racers from the open race roster and saved locally on this device.'
+                    : 'Add points to a racer in ${race!.name}. Saved totals always add on top of any previous points already stored in SQLite.',
+                style: Theme.of(context).textTheme.bodyLarge,
+              ),
+              const SizedBox(height: 18),
+              pointsAsync.when(
+                data: (summaries) {
+                  final racersWithPoints = summaries
+                      .where((summary) => summary.totalPoints > 0)
+                      .toList(growable: false);
+                  final preview = racersWithPoints
+                      .take(5)
+                      .toList(growable: false);
 
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    StatusBanner(
-                      title: race == null
-                          ? 'No race selected'
-                          : '${summaries.length} racers available',
-                      message: race == null
-                          ? 'Open a race to assign or download racer points.'
-                          : racersWithPoints.isEmpty
-                          ? 'No points have been assigned yet. Add points to start building the totals.'
-                          : '${racersWithPoints.length} racers already have saved points. Download exports the full roster with current totals.',
-                      tone: race == null
-                          ? StatusBannerTone.warning
-                          : racersWithPoints.isEmpty
-                          ? StatusBannerTone.info
-                          : StatusBannerTone.success,
-                    ),
-                    if (preview.isNotEmpty) ...[
-                      const SizedBox(height: 14),
-                      ...preview.map(
-                        (summary) => ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(summary.runnerName),
-                          subtitle: Text(summary.barcodeValue),
-                          trailing: Text(
-                            '${summary.totalPoints} pts',
-                            style: Theme.of(context).textTheme.titleMedium,
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      StatusBanner(
+                        title: race == null
+                            ? 'No race selected'
+                            : '${summaries.length} racers available',
+                        message: race == null
+                            ? 'Open a race to assign or download racer points.'
+                            : racersWithPoints.isEmpty
+                            ? 'No points have been assigned yet. Add points to start building the totals.'
+                            : '${racersWithPoints.length} racers already have saved points. Download exports the full roster with current totals.',
+                        tone: race == null
+                            ? StatusBannerTone.warning
+                            : racersWithPoints.isEmpty
+                            ? StatusBannerTone.info
+                            : StatusBannerTone.success,
+                      ),
+                      if (preview.isNotEmpty) ...[
+                        const SizedBox(height: 14),
+                        ...preview.map(
+                          (summary) => ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(summary.runnerName),
+                            subtitle: Text(summary.barcodeValue),
+                            trailing: Text(
+                              '${summary.totalPoints} pts',
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
                           ),
                         ),
-                      ),
+                      ],
                     ],
-                  ],
-                );
-              },
-              loading: () => const LinearProgressIndicator(),
-              error: (error, stackTrace) => StatusBanner(
-                title: 'Could not load points',
-                message: userFacingErrorMessage(
-                  error,
-                  fallback:
-                      'The saved racer points could not be loaded right now.',
+                  );
+                },
+                loading: () => const LinearProgressIndicator(),
+                error: (error, stackTrace) => StatusBanner(
+                  title: 'Could not load points',
+                  message: userFacingErrorMessage(
+                    error,
+                    fallback:
+                        'The saved racer points could not be loaded right now.',
+                  ),
+                  tone: StatusBannerTone.error,
                 ),
-                tone: StatusBannerTone.error,
               ),
-            ),
-            const SizedBox(height: 18),
-            Wrap(
-              spacing: 14,
-              runSpacing: 14,
-              children: [
-                FilledButton.icon(
-                  onPressed: onAwardPoints,
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size(240, 64),
-                    textStyle: Theme.of(context).textTheme.titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w700),
+              const SizedBox(height: 18),
+              Wrap(
+                spacing: 14,
+                runSpacing: 14,
+                children: [
+                  FilledButton.icon(
+                    onPressed: onAwardPoints,
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(240, 64),
+                      textStyle: Theme.of(context).textTheme.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                    icon: const Icon(Icons.workspace_premium_outlined),
+                    label: const Text('Add Points'),
                   ),
-                  icon: const Icon(Icons.workspace_premium_outlined),
-                  label: const Text('Add Points'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: onDownloadPoints,
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(240, 64),
-                    textStyle: Theme.of(context).textTheme.titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w700),
+                  OutlinedButton.icon(
+                    onPressed: onDownloadPoints,
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(240, 64),
+                      textStyle: Theme.of(context).textTheme.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                    icon: const Icon(Icons.download_outlined),
+                    label: const Text('Download Points CSV'),
                   ),
-                  icon: const Icon(Icons.download_outlined),
-                  label: const Text('Download Points CSV'),
-                ),
-              ],
-            ),
-          ],
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1022,221 +1149,229 @@ class _RaceDatabaseCardState extends ConsumerState<_RaceDatabaseCard> {
     final colorScheme = theme.colorScheme;
 
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Editable Race Database',
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w800,
+      child: SizedBox(
+        width: double.infinity,
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Editable Race Database',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
               ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              widget.race == null
-                  ? 'Choose a race first. This section lets organizers edit the runner data that was imported or added on the spot.'
-                  : 'Review and edit the saved roster for ${widget.race!.name}. Started runners show their start scan, ended runners show their finish or global-stop time, and every row can be edited directly from this spreadsheet view.',
-              style: theme.textTheme.bodyLarge?.copyWith(fontSize: 18),
-            ),
-            const SizedBox(height: 18),
-            Wrap(
-              spacing: 14,
-              runSpacing: 14,
-              children: [
-                OutlinedButton.icon(
-                  onPressed: widget.onDownloadResultsPdf,
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(240, 64),
-                    textStyle: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
+              const SizedBox(height: 10),
+              Text(
+                widget.race == null
+                    ? 'Choose a race first. This section lets organizers edit the runner data that was imported or added on the spot.'
+                    : 'Review and edit the saved roster for ${widget.race!.name}. Started runners show their start scan, ended runners show their finish or global-stop time, and every row can be edited directly from this spreadsheet view.',
+                style: theme.textTheme.bodyLarge?.copyWith(fontSize: 18),
+              ),
+              const SizedBox(height: 18),
+              Wrap(
+                spacing: 14,
+                runSpacing: 14,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: widget.onDownloadResultsPdf,
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size(240, 64),
+                      textStyle: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
+                    icon: const Icon(Icons.picture_as_pdf_outlined),
+                    label: const Text('Download Results PDF'),
                   ),
-                  icon: const Icon(Icons.picture_as_pdf_outlined),
-                  label: const Text('Download Results PDF'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 18),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: colorScheme.primaryContainer.withValues(alpha: 0.45),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: colorScheme.outlineVariant),
+                ],
               ),
-              child: Text(
-                'Spreadsheet view: scroll sideways for all columns, then tap Edit on any row to update the saved database entry.',
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  fontWeight: FontWeight.w600,
+              const SizedBox(height: 18),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: colorScheme.primaryContainer.withValues(alpha: 0.45),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: colorScheme.outlineVariant),
+                ),
+                child: Text(
+                  'Spreadsheet view: scroll sideways for all columns, then tap Edit on any row to update the saved database entry.',
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 18),
-            rowsAsync.when(
-              data: (rows) {
-                final sortedRows = rows.toList(growable: false)
-                  ..sort(
-                    (left, right) => left.runnerName.toLowerCase().compareTo(
-                      right.runnerName.toLowerCase(),
-                    ),
-                  );
-                if (sortedRows.isEmpty) {
-                  return const StatusBanner(
-                    title: 'No racer data yet',
-                    message:
-                        'Import runners or add a walk-up racer first, then the editable database list will appear here.',
-                    tone: StatusBannerTone.info,
-                  );
-                }
+              const SizedBox(height: 18),
+              rowsAsync.when(
+                data: (rows) {
+                  final sortedRows = rows.toList(growable: false)
+                    ..sort(
+                      (left, right) => left.runnerName.toLowerCase().compareTo(
+                        right.runnerName.toLowerCase(),
+                      ),
+                    );
+                  if (sortedRows.isEmpty) {
+                    return const StatusBanner(
+                      title: 'No racer data yet',
+                      message:
+                          'Import runners or add a walk-up racer first, then the editable database list will appear here.',
+                      tone: StatusBannerTone.info,
+                    );
+                  }
 
-                return Container(
-                  decoration: BoxDecoration(
-                    color: colorScheme.surfaceContainerLowest,
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: colorScheme.outlineVariant),
-                  ),
-                  child: Scrollbar(
-                    controller: _horizontalScrollController,
-                    thumbVisibility: true,
-                    trackVisibility: true,
-                    child: SingleChildScrollView(
+                  return Container(
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerLowest,
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: colorScheme.outlineVariant),
+                    ),
+                    child: Scrollbar(
                       controller: _horizontalScrollController,
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.all(16),
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(minWidth: 1700),
-                        child: DataTable(
-                          headingRowHeight: 64,
-                          dataRowMinHeight: 76,
-                          dataRowMaxHeight: 92,
-                          horizontalMargin: 14,
-                          columnSpacing: 20,
-                          dividerThickness: 1,
-                          headingTextStyle: theme.textTheme.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.w800),
-                          dataTextStyle: theme.textTheme.bodyLarge?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                          columns: const [
-                            DataColumn(label: Text('Runner')),
-                            DataColumn(label: Text('Barcode')),
-                            DataColumn(label: Text('Bib No.')),
-                            DataColumn(label: Text('City')),
-                            DataColumn(label: Text('Age')),
-                            DataColumn(label: Text('Gender')),
-                            DataColumn(label: Text('Distance')),
-                            DataColumn(label: Text('Started')),
-                            DataColumn(label: Text('Ended')),
-                            DataColumn(label: Text('Time')),
-                            DataColumn(label: Text('Pace')),
-                            DataColumn(label: Text('Payment')),
-                            DataColumn(label: Text('Status')),
-                            DataColumn(label: Text('Action')),
-                          ],
-                          rows: List<DataRow>.generate(sortedRows.length, (
-                            index,
-                          ) {
-                            final row = sortedRows[index];
-                            final stripeColor = index.isEven
-                                ? colorScheme.surface
-                                : colorScheme.surfaceContainerHighest
-                                      .withValues(alpha: 0.28);
+                      thumbVisibility: true,
+                      trackVisibility: true,
+                      child: SingleChildScrollView(
+                        controller: _horizontalScrollController,
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.all(16),
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(minWidth: 1700),
+                          child: DataTable(
+                            headingRowHeight: 64,
+                            dataRowMinHeight: 76,
+                            dataRowMaxHeight: 92,
+                            horizontalMargin: 14,
+                            columnSpacing: 20,
+                            dividerThickness: 1,
+                            headingTextStyle: theme.textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                            dataTextStyle: theme.textTheme.bodyLarge?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                            columns: const [
+                              DataColumn(label: Text('Runner')),
+                              DataColumn(label: Text('Barcode')),
+                              DataColumn(label: Text('Bib No.')),
+                              DataColumn(label: Text('City')),
+                              DataColumn(label: Text('Age')),
+                              DataColumn(label: Text('Gender')),
+                              DataColumn(label: Text('Distance')),
+                              DataColumn(label: Text('Started')),
+                              DataColumn(label: Text('Ended')),
+                              DataColumn(label: Text('Time')),
+                              DataColumn(label: Text('Pace')),
+                              DataColumn(label: Text('Payment')),
+                              DataColumn(label: Text('Status')),
+                              DataColumn(label: Text('Action')),
+                            ],
+                            rows: List<DataRow>.generate(sortedRows.length, (
+                              index,
+                            ) {
+                              final row = sortedRows[index];
+                              final stripeColor = index.isEven
+                                  ? colorScheme.surface
+                                  : colorScheme.surfaceContainerHighest
+                                        .withValues(alpha: 0.28);
 
-                            return DataRow(
-                              color: WidgetStatePropertyAll<Color?>(
-                                stripeColor,
-                              ),
-                              cells: [
-                                DataCell(
-                                  SizedBox(
-                                    width: 220,
-                                    child: Text(
-                                      row.runnerName,
-                                      style: theme.textTheme.titleMedium
-                                          ?.copyWith(
-                                            fontWeight: FontWeight.w800,
-                                          ),
-                                    ),
-                                  ),
+                              return DataRow(
+                                color: WidgetStatePropertyAll<Color?>(
+                                  stripeColor,
                                 ),
-                                DataCell(
-                                  SizedBox(
-                                    width: 118,
-                                    child: Text(row.barcodeValue),
-                                  ),
-                                ),
-                                DataCell(Text(_displayValue(row.bibNumber))),
-                                DataCell(
-                                  SizedBox(
-                                    width: 120,
-                                    child: Text(_displayValue(row.city)),
-                                  ),
-                                ),
-                                DataCell(
-                                  Text(
-                                    row.age == null ? '--' : row.age.toString(),
-                                  ),
-                                ),
-                                DataCell(Text(_displayValue(row.gender))),
-                                DataCell(
-                                  SizedBox(
-                                    width: 170,
-                                    child: Text(
-                                      RaceService.buildDistanceLabel(
-                                        row.distanceName,
-                                        row.distanceMiles,
+                                cells: [
+                                  DataCell(
+                                    SizedBox(
+                                      width: 220,
+                                      child: Text(
+                                        row.runnerName,
+                                        style: theme.textTheme.titleMedium
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w800,
+                                            ),
                                       ),
                                     ),
                                   ),
-                                ),
-                                DataCell(Text(_formatStartValue(row))),
-                                DataCell(Text(_formatEndValue(row))),
-                                DataCell(Text(_formatElapsedValue(row))),
-                                DataCell(
-                                  SizedBox(
-                                    width: 88,
-                                    child: Text(_formatPaceValue(row)),
+                                  DataCell(
+                                    SizedBox(
+                                      width: 118,
+                                      child: Text(row.barcodeValue),
+                                    ),
                                   ),
-                                ),
-                                DataCell(Text(row.paymentStatus.label)),
-                                DataCell(
-                                  _DatabaseStatusPill(
-                                    label: row.editableStatusLabel,
+                                  DataCell(Text(_displayValue(row.bibNumber))),
+                                  DataCell(
+                                    SizedBox(
+                                      width: 120,
+                                      child: Text(_displayValue(row.city)),
+                                    ),
                                   ),
-                                ),
-                                DataCell(
-                                  FilledButton.tonalIcon(
-                                    onPressed: widget.onEditRow == null
-                                        ? null
-                                        : () => widget.onEditRow!(row),
-                                    icon: const Icon(Icons.edit_outlined),
-                                    label: const Text('Edit'),
+                                  DataCell(
+                                    Text(
+                                      row.age == null
+                                          ? '--'
+                                          : row.age.toString(),
+                                    ),
                                   ),
-                                ),
-                              ],
-                            );
-                          }),
+                                  DataCell(Text(_displayValue(row.gender))),
+                                  DataCell(
+                                    SizedBox(
+                                      width: 170,
+                                      child: Text(
+                                        RaceService.buildDistanceLabel(
+                                          row.distanceName,
+                                          row.distanceMiles,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  DataCell(Text(_formatStartValue(row))),
+                                  DataCell(Text(_formatEndValue(row))),
+                                  DataCell(Text(_formatElapsedValue(row))),
+                                  DataCell(
+                                    SizedBox(
+                                      width: 88,
+                                      child: Text(_formatPaceValue(row)),
+                                    ),
+                                  ),
+                                  DataCell(Text(row.paymentStatus.label)),
+                                  DataCell(
+                                    _DatabaseStatusPill(
+                                      label: row.editableStatusLabel,
+                                    ),
+                                  ),
+                                  DataCell(
+                                    FilledButton.tonalIcon(
+                                      onPressed: widget.onEditRow == null
+                                          ? null
+                                          : () => widget.onEditRow!(row),
+                                      icon: const Icon(Icons.edit_outlined),
+                                      label: const Text('Edit'),
+                                    ),
+                                  ),
+                                ],
+                              );
+                            }),
+                          ),
                         ),
                       ),
                     ),
+                  );
+                },
+                loading: () => const LinearProgressIndicator(),
+                error: (error, stackTrace) => StatusBanner(
+                  title: 'Could not load racer data',
+                  message: userFacingErrorMessage(
+                    error,
+                    fallback:
+                        'The editable racer database could not be loaded right now.',
                   ),
-                );
-              },
-              loading: () => const LinearProgressIndicator(),
-              error: (error, stackTrace) => StatusBanner(
-                title: 'Could not load racer data',
-                message: userFacingErrorMessage(
-                  error,
-                  fallback:
-                      'The editable racer database could not be loaded right now.',
+                  tone: StatusBannerTone.error,
                 ),
-                tone: StatusBannerTone.error,
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -1346,149 +1481,154 @@ class _RaceDistanceConfigsCard extends ConsumerWidget {
         : ref.watch(raceDistanceConfigsProvider(race!.id));
 
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Alternate Distance Setup',
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              race == null
-                  ? 'Choose a race first, then configure the main distance and any alternate distances for that event day.'
-                  : 'Set up the main race distance and any alternate distances for ${race!.name}. Each runner can be assigned to one distance, and pace is calculated from that distance after the finish scan.',
-              style: theme.textTheme.bodyLarge?.copyWith(fontSize: 18),
-            ),
-            const SizedBox(height: 18),
-            Wrap(
-              spacing: 14,
-              runSpacing: 14,
-              children: [
-                FilledButton.icon(
-                  onPressed: onAddDistance,
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size(240, 64),
-                    textStyle: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  icon: const Icon(Icons.add_road_outlined),
-                  label: const Text('Add Distance'),
+      child: SizedBox(
+        width: double.infinity,
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Alternate Distance Setup',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
                 ),
-              ],
-            ),
-            const SizedBox(height: 18),
-            configsAsync.when(
-              data: (configs) {
-                if (configs.isEmpty) {
-                  return const StatusBanner(
-                    title: 'No distance setup yet',
-                    message:
-                        'Add the full distance first. Imported and walk-up runners will then default to the primary distance, and alternate distances can be assigned in the racer editor.',
-                    tone: StatusBannerTone.info,
-                  );
-                }
+              ),
+              const SizedBox(height: 10),
+              Text(
+                race == null
+                    ? 'Choose a race first, then configure the main distance and any alternate distances for that event day.'
+                    : 'Set up the main race distance and any alternate distances for ${race!.name}. Each runner can be assigned to one distance, and pace is calculated from that distance after the finish scan.',
+                style: theme.textTheme.bodyLarge?.copyWith(fontSize: 18),
+              ),
+              const SizedBox(height: 18),
+              Wrap(
+                spacing: 14,
+                runSpacing: 14,
+                children: [
+                  FilledButton.icon(
+                    onPressed: onAddDistance,
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(240, 64),
+                      textStyle: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    icon: const Icon(Icons.add_road_outlined),
+                    label: const Text('Add Distance'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              configsAsync.when(
+                data: (configs) {
+                  if (configs.isEmpty) {
+                    return const StatusBanner(
+                      title: 'No distance setup yet',
+                      message:
+                          'Add the full distance first. Imported and walk-up runners will then default to the primary distance, and alternate distances can be assigned in the racer editor.',
+                      tone: StatusBannerTone.info,
+                    );
+                  }
 
-                return Column(
-                  children: configs
-                      .map(
-                        (config) => Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: Container(
-                            padding: const EdgeInsets.all(18),
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.surfaceContainerHighest
-                                  .withValues(alpha: 0.4),
-                              borderRadius: BorderRadius.circular(24),
-                              border: Border.all(
-                                color: theme.colorScheme.outlineVariant,
+                  return Column(
+                    children: configs
+                        .map(
+                          (config) => Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: Container(
+                              padding: const EdgeInsets.all(18),
+                              decoration: BoxDecoration(
+                                color: theme.colorScheme.surfaceContainerHighest
+                                    .withValues(alpha: 0.4),
+                                borderRadius: BorderRadius.circular(24),
+                                border: Border.all(
+                                  color: theme.colorScheme.outlineVariant,
+                                ),
                               ),
-                            ),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        config.sectionLabel,
-                                        style: theme.textTheme.titleLarge
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          config.sectionLabel,
+                                          style: theme.textTheme.titleLarge
+                                              ?.copyWith(
+                                                fontWeight: FontWeight.w800,
+                                              ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          config.isPrimary
+                                              ? 'Primary distance for new imports and walk-up runners.'
+                                              : 'Alternate distance available for runner assignment and grouped exports.',
+                                          style: theme.textTheme.bodyLarge,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (config.isPrimary) ...[
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 8,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFD7EEE8),
+                                        borderRadius: BorderRadius.circular(
+                                          999,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        'Primary',
+                                        style: theme.textTheme.labelLarge
                                             ?.copyWith(
+                                              color: const Color(0xFF123A35),
                                               fontWeight: FontWeight.w800,
                                             ),
                                       ),
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        config.isPrimary
-                                            ? 'Primary distance for new imports and walk-up runners.'
-                                            : 'Alternate distance available for runner assignment and grouped exports.',
-                                        style: theme.textTheme.bodyLarge,
-                                      ),
-                                    ],
+                                    ),
+                                    const SizedBox(width: 12),
+                                  ],
+                                  OutlinedButton.icon(
+                                    onPressed: onEditDistance == null
+                                        ? null
+                                        : () => onEditDistance!(config),
+                                    icon: const Icon(Icons.edit_outlined),
+                                    label: const Text('Edit'),
                                   ),
-                                ),
-                                if (config.isPrimary) ...[
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 8,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFD7EEE8),
-                                      borderRadius: BorderRadius.circular(999),
-                                    ),
-                                    child: Text(
-                                      'Primary',
-                                      style: theme.textTheme.labelLarge
-                                          ?.copyWith(
-                                            color: const Color(0xFF123A35),
-                                            fontWeight: FontWeight.w800,
-                                          ),
-                                    ),
+                                  const SizedBox(width: 10),
+                                  OutlinedButton.icon(
+                                    onPressed: onDeleteDistance == null
+                                        ? null
+                                        : () => onDeleteDistance!(config),
+                                    icon: const Icon(Icons.delete_outline),
+                                    label: const Text('Delete'),
                                   ),
-                                  const SizedBox(width: 12),
                                 ],
-                                OutlinedButton.icon(
-                                  onPressed: onEditDistance == null
-                                      ? null
-                                      : () => onEditDistance!(config),
-                                  icon: const Icon(Icons.edit_outlined),
-                                  label: const Text('Edit'),
-                                ),
-                                const SizedBox(width: 10),
-                                OutlinedButton.icon(
-                                  onPressed: onDeleteDistance == null
-                                      ? null
-                                      : () => onDeleteDistance!(config),
-                                  icon: const Icon(Icons.delete_outline),
-                                  label: const Text('Delete'),
-                                ),
-                              ],
+                              ),
                             ),
                           ),
-                        ),
-                      )
-                      .toList(growable: false),
-                );
-              },
-              loading: () => const LinearProgressIndicator(),
-              error: (error, stackTrace) => StatusBanner(
-                title: 'Could not load distance setup',
-                message: userFacingErrorMessage(
-                  error,
-                  fallback:
-                      'The saved distance configuration could not be loaded right now.',
+                        )
+                        .toList(growable: false),
+                  );
+                },
+                loading: () => const LinearProgressIndicator(),
+                error: (error, stackTrace) => StatusBanner(
+                  title: 'Could not load distance setup',
+                  message: userFacingErrorMessage(
+                    error,
+                    fallback:
+                        'The saved distance configuration could not be loaded right now.',
+                  ),
+                  tone: StatusBannerTone.error,
                 ),
-                tone: StatusBannerTone.error,
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

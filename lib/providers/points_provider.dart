@@ -5,6 +5,7 @@ import 'package:race_timer/providers/race_provider.dart';
 
 final racePointsProvider =
     FutureProvider.family<List<RunnerPointsSummary>, int>((ref, raceId) async {
+      ref.watch(databaseChangesProvider);
       return ref
           .watch(raceServiceProvider)
           .listRaceRunnerPointsSummaries(raceId);
@@ -13,5 +14,6 @@ final racePointsProvider =
 final overallPointsProvider = FutureProvider<List<OverallRunnerPointsSummary>>((
   ref,
 ) async {
+  ref.watch(databaseChangesProvider);
   return ref.watch(raceServiceProvider).listOverallRunnerPointsSummaries();
 });

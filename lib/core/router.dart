@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:race_timer/core/app_navigation.dart';
 import 'package:race_timer/core/constants.dart';
 import 'package:race_timer/providers/admin_access_provider.dart';
 import 'package:race_timer/screens/export_screen.dart';
@@ -21,6 +22,7 @@ final routerProvider = Provider<GoRouter>((ref) {
   };
 
   return GoRouter(
+    navigatorKey: appNavigatorKey,
     initialLocation: AppRoutes.adminHome,
     redirect: (context, state) {
       final path = state.uri.path;
@@ -42,6 +44,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.raceDashboard,
         builder: (context, state) => const RaceDashboardScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.rosterTools,
+        builder: (context, state) => const RosterToolsScreen(),
       ),
       GoRoute(
         path: AppRoutes.registration,

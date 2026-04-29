@@ -56,9 +56,10 @@ class HomeScreen extends ConsumerWidget {
             builder: (context, constraints) {
               final stackedLayout = constraints.maxWidth < 900;
               final scrollLayout = stackedLayout || constraints.maxHeight < 900;
-              final chooseRaceHeight = (constraints.maxHeight * 0.46)
-                  .clamp(300, 360)
-                  .toDouble();
+              const wideOverallHeight = 440.0;
+              final chooseRaceHeight = scrollLayout
+                  ? (constraints.maxHeight * 0.52).clamp(420, 480).toDouble()
+                  : constraints.maxHeight - 24 - wideOverallHeight;
 
               final overallSection = racesAsync.when(
                 data: (races) => scrollLayout
@@ -70,7 +71,7 @@ class HomeScreen extends ConsumerWidget {
                             _exportOverallPoints(context, ref, races),
                       )
                     : SizedBox(
-                        height: 420,
+                        height: wideOverallHeight,
                         child: _OverallPointsSection(
                           races: races,
                           fillHeight: true,
@@ -662,9 +663,7 @@ class _OverallPointsContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final totalPoints = rows.fold<int>(0, (sum, row) => sum + row.totalPoints);
-    final metrics = Wrap(
-      spacing: 12,
-      runSpacing: 12,
+    final metrics = _OverviewMetricGrid(
       children: [
         _OverviewMetricTile(
           label: 'Latest Race',
@@ -679,32 +678,11 @@ class _OverallPointsContent extends StatelessWidget {
       ],
     );
 
-    final actions = Align(
-      alignment: Alignment.centerLeft,
-      child: Wrap(
-        spacing: 12,
-        runSpacing: 12,
-        children: [
-          OutlinedButton.icon(
-            onPressed: () => context.go(AppRoutes.overallPoints),
-            style: _overallActionButtonStyle(context),
-            icon: const Icon(Icons.table_chart_outlined),
-            label: const Text('View Full Table'),
-          ),
-          FilledButton.icon(
-            onPressed: races.isEmpty ? null : onAdjustPoints,
-            style: _overallActionButtonStyle(context),
-            icon: const Icon(Icons.tune),
-            label: const Text('Adjust Overall Points'),
-          ),
-          OutlinedButton.icon(
-            onPressed: onExportPoints,
-            style: _overallActionButtonStyle(context),
-            icon: const Icon(Icons.download_outlined),
-            label: const Text('Export Overall Points'),
-          ),
-        ],
-      ),
+    final actions = _OverallPointsActions(
+      races: races,
+      onViewFullTable: () => context.go(AppRoutes.overallPoints),
+      onAdjustPoints: onAdjustPoints,
+      onExportPoints: onExportPoints,
     );
 
     if (fillHeight) {
@@ -825,9 +803,12 @@ class _OverallPointsContent extends StatelessWidget {
 
 ButtonStyle _overallActionButtonStyle(BuildContext context) {
   return ButtonStyle(
-    minimumSize: const WidgetStatePropertyAll(Size(0, 62)),
+    minimumSize: const WidgetStatePropertyAll(Size(0, 64)),
     padding: const WidgetStatePropertyAll(
       EdgeInsets.symmetric(horizontal: 22, vertical: 18),
+    ),
+    shape: WidgetStatePropertyAll(
+      RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
     ),
     textStyle: WidgetStatePropertyAll(
       Theme.of(
@@ -835,6 +816,111 @@ ButtonStyle _overallActionButtonStyle(BuildContext context) {
       ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w800),
     ),
   );
+}
+
+class _OverviewMetricGrid extends StatelessWidget {
+  const _OverviewMetricGrid({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final crossAxisCount = switch (constraints.maxWidth) {
+          >= 960 => 4,
+          >= 520 => 2,
+          _ => 1,
+        };
+        const tileHeight = 116.0;
+        const spacing = 12.0;
+        final rowCount = (children.length / crossAxisCount).ceil();
+
+        return SizedBox(
+          height: rowCount * tileHeight + (rowCount - 1) * spacing,
+          child: GridView.builder(
+            primary: false,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: crossAxisCount,
+              mainAxisExtent: tileHeight,
+              mainAxisSpacing: spacing,
+              crossAxisSpacing: spacing,
+            ),
+            itemCount: children.length,
+            itemBuilder: (context, index) => children[index],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _OverallPointsActions extends StatelessWidget {
+  const _OverallPointsActions({
+    required this.races,
+    required this.onViewFullTable,
+    required this.onAdjustPoints,
+    required this.onExportPoints,
+  });
+
+  final List<Race> races;
+  final VoidCallback onViewFullTable;
+  final VoidCallback onAdjustPoints;
+  final VoidCallback onExportPoints;
+
+  @override
+  Widget build(BuildContext context) {
+    final buttons = [
+      OutlinedButton.icon(
+        onPressed: onViewFullTable,
+        style: _overallActionButtonStyle(context),
+        icon: const Icon(Icons.table_chart_outlined),
+        label: const Text('View Full Table'),
+      ),
+      FilledButton.icon(
+        onPressed: races.isEmpty ? null : onAdjustPoints,
+        style: _overallActionButtonStyle(context),
+        icon: const Icon(Icons.tune),
+        label: const Text('Adjust Overall Points'),
+      ),
+      OutlinedButton.icon(
+        onPressed: onExportPoints,
+        style: _overallActionButtonStyle(context),
+        icon: const Icon(Icons.download_outlined),
+        label: const Text('Export Overall Points'),
+      ),
+    ];
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 760) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var index = 0; index < buttons.length; index++) ...[
+                SizedBox(height: 64, child: buttons[index]),
+                if (index != buttons.length - 1) const SizedBox(height: 12),
+              ],
+            ],
+          );
+        }
+
+        return SizedBox(
+          height: 64,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var index = 0; index < buttons.length; index++) ...[
+                Expanded(child: buttons[index]),
+                if (index != buttons.length - 1) const SizedBox(width: 12),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
 }
 
 class _OverviewMetricTile extends StatelessWidget {
@@ -847,11 +933,10 @@ class _OverviewMetricTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return Container(
-      width: 160,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: colorScheme.primaryContainer.withValues(alpha: 0.7),
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: colorScheme.outlineVariant),
       ),
       child: Column(
@@ -991,7 +1076,7 @@ class _EmptyRaceState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
+    final content = Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 640),
         child: Padding(
@@ -1028,6 +1113,24 @@ class _EmptyRaceState extends StatelessWidget {
           ),
         ),
       ),
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (!constraints.hasBoundedHeight) {
+          return content;
+        }
+
+        return SingleChildScrollView(
+          physics: constraints.maxHeight < 420
+              ? const AlwaysScrollableScrollPhysics()
+              : const NeverScrollableScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: content,
+          ),
+        );
+      },
     );
   }
 }

@@ -74,7 +74,9 @@ class MethodChannelPrinterService implements PrinterService {
 
     try {
       final result = await _invokeStatusMethod('getStatus', settings: settings);
-      return PrinterStatus.fromMap(result);
+      final status = PrinterStatus.fromMap(result);
+      await _syncLoadedMediaSetting(settings, status);
+      return status;
     } on PlatformException catch (error) {
       return PrinterStatus.error(
         host: settings.printerHost,
@@ -136,10 +138,12 @@ class MethodChannelPrinterService implements PrinterService {
         ),
       );
       final status = PrinterStatus.fromMap(result);
+      await _syncLoadedMediaSetting(settings, status);
       if (status.message.trim().isEmpty && status.isReady) {
         return PrinterStatus.success(
           host: status.host,
           message: successFallback,
+          loadedMedia: status.loadedMedia,
         );
       }
       return status;
@@ -174,5 +178,21 @@ class MethodChannelPrinterService implements PrinterService {
         ) ??
         const <Object?, Object?>{};
     return result;
+  }
+
+  Future<void> _syncLoadedMediaSetting(
+    AppSettings settings,
+    PrinterStatus status,
+  ) async {
+    final loadedMedia = status.loadedMedia?.trim();
+    if (loadedMedia == null ||
+        loadedMedia.isEmpty ||
+        loadedMedia == settings.printerMedia.trim()) {
+      return;
+    }
+
+    await _settingsService.saveSettings(
+      settings.copyWith(printerMedia: loadedMedia),
+    );
   }
 }
