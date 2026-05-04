@@ -241,10 +241,10 @@ void main() {
     );
     expect(find.text('Race Timing'), findsOneWidget);
     await tester.scrollUntilVisible(
-      find.text('Timing Capture'),
+      find.text('Result Table'),
       300,
       scrollable: dashboardScrollView,
     );
-    expect(find.text('Timing Capture'), findsOneWidget);
+    expect(find.text('Result Table'), findsOneWidget);
   });
 }

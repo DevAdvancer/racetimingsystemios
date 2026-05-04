@@ -52,6 +52,24 @@ private enum PrinterConnectionKind: String {
   }
 }
 
+private enum PrintOrientationKind: String {
+  case landscape
+  case portrait
+
+  init(storageValue: String?) {
+    self = PrintOrientationKind(rawValue: storageValue ?? "") ?? .landscape
+  }
+
+  var sdkValue: BRLMPrintSettingsOrientation {
+    switch self {
+    case .landscape:
+      return .landscape
+    case .portrait:
+      return .portrait
+    }
+  }
+}
+
 private struct PrinterRequest {
   init(arguments: [String: Any]) {
     host = ((arguments["host"] as? String) ?? (arguments["printerHost"] as? String))?
@@ -59,6 +77,9 @@ private struct PrinterRequest {
     media = ((arguments["media"] as? String) ?? (arguments["printerMedia"] as? String))?
       .trimmingCharacters(in: .whitespacesAndNewlines)
     connectionType = PrinterConnectionKind(storageValue: arguments["connectionType"] as? String)
+    printOrientation = PrintOrientationKind(
+      storageValue: (arguments["printOrientation"] as? String) ?? (arguments["printerOrientation"] as? String)
+    )
     runnerName = (arguments["runnerName"] as? String)?
       .trimmingCharacters(in: .whitespacesAndNewlines)
     barcodeValue = (arguments["barcodeValue"] as? String)?
@@ -70,6 +91,7 @@ private struct PrinterRequest {
   let host: String?
   let media: String?
   let connectionType: PrinterConnectionKind
+  let printOrientation: PrintOrientationKind
   let runnerName: String?
   let barcodeValue: String?
   let raceName: String?
@@ -216,9 +238,10 @@ final class BrotherPrinterBridge: NSObject {
         "host": request.host as Any,
         "media": request.media as Any,
         "connectionType": request.connectionType.rawValue,
+        "printOrientation": request.printOrientation.rawValue,
         "runnerName": "Printer Test",
         "barcodeValue": "TEST-PRINT",
-        "raceName": "RaceTimerApp"
+        "raceName": "Club Race Timer"
       ]
       return PrinterRequest(arguments: values)
     }()
@@ -301,12 +324,12 @@ final class BrotherPrinterBridge: NSObject {
 
       let loadedMediaDescription = self.describeMedia(status.mediaInfo)
       guard let printSettings = self.makePrintSettings(
-        media: request.media,
-        loadedMedia: status.mediaInfo
+        loadedMedia: status.mediaInfo,
+        orientation: request.printOrientation
       ) else {
         let mediaMessage = loadedMediaDescription.map {
           "The loaded label size \($0) is not supported for this app's Brother QL-820NWB labels."
-        } ?? "The saved label size is not supported for the Brother QL-820NWB."
+        } ?? "The Brother printer did not report the loaded label size. Check the roll and try Check Printer again."
         result(
           self.statusMap(
             health: "error",
@@ -319,8 +342,7 @@ final class BrotherPrinterBridge: NSObject {
 
       guard let image = self.renderLabelImage(
         runnerName: runnerName,
-        barcodeValue: barcodeValue,
-        raceName: request.raceName
+        barcodeValue: barcodeValue
       )?.cgImage else {
         result(
           self.statusMap(
@@ -674,17 +696,18 @@ final class BrotherPrinterBridge: NSObject {
   }
 
   private func makePrintSettings(
-    media: String?,
-    loadedMedia: BRLMMediaInfo? = nil
+    loadedMedia: BRLMMediaInfo? = nil,
+    orientation: PrintOrientationKind
   ) -> BRLMQLPrintSettings? {
     guard let printSettings = BRLMQLPrintSettings(defaultPrintSettingsWith: .QL_820NWB) else {
       return nil
     }
 
-    guard let labelSize = qlLabelSize(for: loadedMedia) ?? qlLabelSize(for: media) else {
+    guard let labelSize = qlLabelSize(for: loadedMedia) else {
       return nil
     }
     printSettings.labelSize = labelSize
+    printSettings.printOrientation = orientation.sdkValue
 
     printSettings.autoCut = true
     printSettings.cutAtEnd = true
@@ -788,48 +811,30 @@ final class BrotherPrinterBridge: NSObject {
 
   private func renderLabelImage(
     runnerName: String,
-    barcodeValue: String,
-    raceName: String?
+    barcodeValue: String
   ) -> UIImage? {
     let size = CGSize(width: 696, height: 300)
     let renderer = UIGraphicsImageRenderer(size: size)
     let barcodeImage = makeBarcodeImage(from: barcodeValue)
-    let raceTitle = (raceName?.isEmpty == false ? raceName : "RaceTimerApp") ?? "RaceTimerApp"
 
     return renderer.image { context in
       UIColor.white.setFill()
       context.fill(CGRect(origin: .zero, size: size))
 
-      let headerStyle = NSMutableParagraphStyle()
-      headerStyle.alignment = .left
-
       let centeredStyle = NSMutableParagraphStyle()
       centeredStyle.alignment = .center
 
-      let headerAttributes: [NSAttributedString.Key: Any] = [
-        .font: UIFont.systemFont(ofSize: 24, weight: .bold),
-        .foregroundColor: UIColor.black,
-        .paragraphStyle: headerStyle
-      ]
       let nameAttributes: [NSAttributedString.Key: Any] = [
-        .font: UIFont.systemFont(ofSize: 30, weight: .semibold),
-        .foregroundColor: UIColor.black,
-        .paragraphStyle: centeredStyle
-      ]
-      let footerAttributes: [NSAttributedString.Key: Any] = [
-        .font: UIFont.monospacedSystemFont(ofSize: 24, weight: .medium),
+        .font: UIFont.systemFont(ofSize: 44, weight: .bold),
         .foregroundColor: UIColor.black,
         .paragraphStyle: centeredStyle
       ]
 
-      raceTitle.draw(in: CGRect(x: 20, y: 14, width: size.width - 40, height: 28), withAttributes: headerAttributes)
-      runnerName.draw(in: CGRect(x: 24, y: 46, width: size.width - 48, height: 72), withAttributes: nameAttributes)
+      runnerName.draw(in: CGRect(x: 18, y: 12, width: size.width - 36, height: 58), withAttributes: nameAttributes)
 
       if let barcodeImage {
-        barcodeImage.draw(in: CGRect(x: 84, y: 120, width: size.width - 168, height: 110))
+        barcodeImage.draw(in: CGRect(x: 18, y: 78, width: size.width - 36, height: 206))
       }
-
-      barcodeValue.draw(in: CGRect(x: 24, y: 240, width: size.width - 48, height: 34), withAttributes: footerAttributes)
     }
   }
 

@@ -172,27 +172,6 @@ class RaceControlScreen extends ConsumerWidget {
                         child: const Text('GLOBAL STOP'),
                       ),
                     ),
-                    const SizedBox(height: 20),
-                    const StatusBanner(
-                      title: 'Global start',
-                      message:
-                          'Use the button above to record the shared gun time for the full field, except early starters.',
-                      tone: StatusBannerTone.info,
-                    ),
-                    const SizedBox(height: 20),
-                    const StatusBanner(
-                      title: 'Global stop',
-                      message:
-                          'Use Global Stop when finish scanning is done. Any checked-in runner who still has no finish scan will be assigned the stop time automatically. If the last unfinished runner in this race is scanned at the finish line first, the race closes automatically.',
-                      tone: StatusBannerTone.info,
-                    ),
-                    const SizedBox(height: 20),
-                    const StatusBanner(
-                      title: 'Early starters',
-                      message:
-                          'Before Global Start, scan the runner barcode in the scanner screen to give that runner a personal early start. After Global Start, scan runner barcodes again to record finishes.',
-                      tone: StatusBannerTone.info,
-                    ),
                   ],
                 ),
               );
@@ -259,7 +238,7 @@ class _EarlyStartersList extends StatelessWidget {
           return const StatusBanner(
             title: 'Early starters',
             message:
-                'No personal start times have been recorded yet. Before the global start, scan a runner barcode in Timing Capture to add one here.',
+                'No personal start times have been recorded yet. Before the global start, scan a runner barcode in Result Table to add one here.',
             tone: StatusBannerTone.info,
           );
         }

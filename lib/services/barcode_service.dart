@@ -18,6 +18,7 @@ class LabelDocument {
   Map<String, Object?> toMap({
     required String printerHost,
     required String printerMedia,
+    required String printOrientation,
   }) {
     return <String, Object?>{
       'runnerName': runnerName,
@@ -28,6 +29,7 @@ class LabelDocument {
       'media': printerMedia,
       'printerHost': printerHost,
       'printerMedia': printerMedia,
+      'printOrientation': printOrientation,
     };
   }
 }

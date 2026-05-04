@@ -202,6 +202,70 @@ void main() {
     },
   );
 
+  test('importRoster keeps runners on upcoming races', () async {
+    final weekOne = await raceService.createRace(
+      name: 'Week 1',
+      raceDate: DateTime.utc(2026, 3, 1),
+    );
+    final weekTwo = await raceService.createRace(
+      name: 'Week 2',
+      raceDate: DateTime.utc(2026, 3, 8),
+    );
+    await settingsService.saveSettings(
+      AppSettings.defaults().copyWith(selectedRaceId: weekOne.id),
+    );
+
+    final importResult = await raceService.importRoster(
+      const RosterImport(
+        sourceName: 'week1.xlsx',
+        runners: <ImportedRunnerData>[
+          ImportedRunnerData(name: 'Jordan'),
+          ImportedRunnerData(name: 'Casey'),
+        ],
+      ),
+    );
+
+    final weekOneResults = await raceService.getResults(weekOne.id);
+    final weekTwoResults = await raceService.getResults(weekTwo.id);
+
+    expect(importResult.importedCount, 2);
+    expect(importResult.copiedForwardCount, 2);
+    expect(weekOneResults.map((row) => row.runnerName), contains('Jordan'));
+    expect(weekTwoResults.map((row) => row.runnerName), contains('Jordan'));
+    expect(weekTwoResults.map((row) => row.runnerName), contains('Casey'));
+    expect(weekTwoResults.every((row) => row.finishTime == null), isTrue);
+  });
+
+  test('createRace seeds roster from the latest previous race', () async {
+    final weekOne = await raceService.createRace(
+      name: 'Week 1',
+      raceDate: DateTime.utc(2026, 3, 1),
+    );
+    await settingsService.saveSettings(
+      AppSettings.defaults().copyWith(selectedRaceId: weekOne.id),
+    );
+    await raceService.importRoster(
+      const RosterImport(
+        sourceName: 'week1.xlsx',
+        runners: <ImportedRunnerData>[ImportedRunnerData(name: 'Jordan')],
+      ),
+    );
+    final weekOneLookup = await raceService.lookupRunnerForCheckIn('Jordan');
+
+    final weekTwo = await raceService.createRace(
+      name: 'Week 2',
+      raceDate: DateTime.utc(2026, 3, 8),
+    );
+    final weekTwoResults = await raceService.getResults(weekTwo.id);
+
+    expect(weekTwoResults, hasLength(1));
+    expect(weekTwoResults.single.runnerName, 'Jordan');
+    expect(
+      weekTwoResults.single.barcodeValue,
+      weekOneLookup.selectedMatch?.entry.barcodeValue,
+    );
+  });
+
   test(
     'importRoster stores sample race-day fields on the runner and entry',
     () async {
@@ -480,6 +544,27 @@ void main() {
     expect(result.outcome, CheckInOutcome.printed);
     expect(lookup.selectedMatch?.runner.name, 'Morgan Diaz');
     expect(lookup.selectedMatch?.entry.barcodeValue, 'RT-000001');
+  });
+
+  test('createAdHocRunnerAndPrint keeps walk-ups on upcoming races', () async {
+    final weekOne = await raceService.createRace(
+      name: 'Week 1',
+      raceDate: DateTime.utc(2026, 3, 1),
+    );
+    final weekTwo = await raceService.createRace(
+      name: 'Week 2',
+      raceDate: DateTime.utc(2026, 3, 8),
+    );
+    await settingsService.saveSettings(
+      AppSettings.defaults().copyWith(selectedRaceId: weekOne.id),
+    );
+
+    await raceService.createAdHocRunnerAndPrint('Morgan Diaz');
+    final weekTwoResults = await raceService.getResults(weekTwo.id);
+
+    expect(weekTwoResults, hasLength(1));
+    expect(weekTwoResults.single.runnerName, 'Morgan Diaz');
+    expect(weekTwoResults.single.finishTime, isNull);
   });
 
   test('awardPointsToRunner adds to an existing saved total', () async {
@@ -823,6 +908,34 @@ void main() {
     );
 
     expect(result.status, FinishScanStatus.raceNotStarted);
+  });
+
+  test('recordFinish returns the racer finish place', () async {
+    final race = await raceService.createRace(name: 'Spring 5K');
+    await raceService.importRoster(
+      const RosterImport(
+        sourceName: 'spring.xlsx',
+        runners: <ImportedRunnerData>[
+          ImportedRunnerData(name: 'Morgan'),
+          ImportedRunnerData(name: 'Taylor'),
+        ],
+      ),
+    );
+    final morgan = await raceService.lookupRunnerForCheckIn('Morgan');
+    final taylor = await raceService.lookupRunnerForCheckIn('Taylor');
+    await raceService.startRace(race.id);
+
+    final first = await raceService.recordFinish(
+      morgan.selectedMatch!.entry.barcodeValue,
+    );
+    final second = await raceService.recordFinish(
+      taylor.selectedMatch!.entry.barcodeValue,
+    );
+
+    expect(first.status, FinishScanStatus.success);
+    expect(first.finishPlace, 1);
+    expect(second.status, FinishScanStatus.success);
+    expect(second.finishPlace, 2);
   });
 
   test(

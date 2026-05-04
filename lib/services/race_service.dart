@@ -9,6 +9,7 @@ import 'package:race_timer/models/overall_runner_points_summary.dart';
 import 'package:race_timer/models/printer_status.dart';
 import 'package:race_timer/models/race.dart';
 import 'package:race_timer/models/race_distance_config.dart';
+import 'package:race_timer/models/race_entry.dart';
 import 'package:race_timer/models/race_result.dart';
 import 'package:race_timer/models/race_schedule_import.dart';
 import 'package:race_timer/models/race_status.dart';
@@ -20,6 +21,7 @@ import 'package:race_timer/services/barcode_service.dart';
 import 'package:race_timer/services/database_service.dart';
 import 'package:race_timer/services/printer_service.dart';
 import 'package:race_timer/services/settings_service.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 class RaceService {
   RaceService({
@@ -57,14 +59,16 @@ class RaceService {
     String? seriesName,
     int entryFeeMinor = 0,
     String currencyCode = 'USD',
-  }) {
-    return _databaseService.createRace(
+  }) async {
+    final created = await _databaseService.createRace(
       name: name,
       raceDate: raceDate,
       seriesName: seriesName,
       entryFeeMinor: entryFeeMinor,
       currencyCode: currencyCode,
     );
+    await _copyRosterFromLatestPreviousRace(created);
+    return created;
   }
 
   Future<RaceDistanceConfig> saveRaceDistanceConfig({
@@ -541,6 +545,11 @@ class RaceService {
     if (race == null) {
       return CheckInResult.noActiveRace();
     }
+    final existingRaces = await listRaces();
+    final upcomingRaces = _upcomingRacesForRoster(
+      sourceRace: race,
+      races: existingRaces,
+    );
 
     try {
       final match = await _databaseService.transaction((db) async {
@@ -587,6 +596,12 @@ class RaceService {
             executor: db,
           );
         }
+        await _copyRosterRunnerToRaces(
+          runner: runner,
+          sourceEntry: entry,
+          races: upcomingRaces,
+          executor: db,
+        );
 
         return CheckInMatch(runner: runner, entry: entry, race: race);
       });
@@ -605,6 +620,105 @@ class RaceService {
 
   Future<List<CheckInMatch>> listCheckInRoster(Race race) {
     return _databaseService.listCheckInMatches(race: race);
+  }
+
+  Future<int> _copyRosterFromLatestPreviousRace(Race race) async {
+    final races = await listRaces();
+    final previousRaces = _previousRacesForRoster(
+      targetRace: race,
+      races: races,
+    );
+
+    for (final previousRace in previousRaces) {
+      final copiedCount = await _databaseService.transaction((db) async {
+        final sourceEntries = await _databaseService.listRaceEntries(
+          previousRace.id,
+          executor: db,
+        );
+        if (sourceEntries.isEmpty) {
+          return 0;
+        }
+        return _copyRaceEntriesToRace(
+          sourceEntries: sourceEntries,
+          targetRace: race,
+          executor: db,
+        );
+      });
+      if (copiedCount > 0) {
+        return copiedCount;
+      }
+    }
+
+    return 0;
+  }
+
+  Future<int> _copyRaceEntriesToRace({
+    required List<RaceEntry> sourceEntries,
+    required Race targetRace,
+    required DatabaseExecutor executor,
+  }) async {
+    var copiedCount = 0;
+    final defaultDistance = await _databaseService.getPrimaryRaceDistanceConfig(
+      targetRace.id,
+      executor: executor,
+    );
+
+    for (final sourceEntry in sourceEntries) {
+      final existingEntry = await _databaseService.getRaceEntryForRunner(
+        runnerId: sourceEntry.runnerId,
+        raceId: targetRace.id,
+        executor: executor,
+      );
+      if (existingEntry != null) {
+        continue;
+      }
+
+      await _databaseService.createRaceEntry(
+        runnerId: sourceEntry.runnerId,
+        raceId: targetRace.id,
+        barcodeValue: sourceEntry.barcodeValue,
+        bibNumber: sourceEntry.bibNumber,
+        age: sourceEntry.age,
+        raceDistanceId: defaultDistance?.id,
+        executor: executor,
+      );
+      copiedCount += 1;
+    }
+
+    return copiedCount;
+  }
+
+  Future<int> _copyRosterRunnerToRaces({
+    required Runner runner,
+    required RaceEntry sourceEntry,
+    required List<Race> races,
+    required DatabaseExecutor executor,
+  }) async {
+    var copiedCount = 0;
+    for (final race in races) {
+      final existingEntry = await _databaseService.getRaceEntryForRunner(
+        runnerId: runner.id,
+        raceId: race.id,
+        executor: executor,
+      );
+      if (existingEntry != null) {
+        continue;
+      }
+
+      final defaultDistance = await _databaseService
+          .getPrimaryRaceDistanceConfig(race.id, executor: executor);
+      await _databaseService.createRaceEntry(
+        runnerId: runner.id,
+        raceId: race.id,
+        barcodeValue: runner.barcodeValue,
+        bibNumber: sourceEntry.bibNumber,
+        age: sourceEntry.age,
+        raceDistanceId: defaultDistance?.id,
+        executor: executor,
+      );
+      copiedCount += 1;
+    }
+    return copiedCount;
   }
 
   Future<void> updateRosterEntry({
@@ -861,7 +975,13 @@ class RaceService {
     var newRunnerCount = 0;
     var duplicateCount = 0;
     var invalidRowCount = roster.invalidRowCount;
+    var copiedForwardCount = 0;
     final seenNames = <String>{};
+    final existingRaces = await listRaces();
+    final upcomingRaces = _upcomingRacesForRoster(
+      sourceRace: race,
+      races: existingRaces,
+    );
 
     try {
       await _databaseService.transaction((db) async {
@@ -990,17 +1110,33 @@ class RaceService {
                 executor: db,
               );
             }
+            copiedForwardCount += await _copyRosterRunnerToRaces(
+              runner: runner,
+              sourceEntry: existingEntry.copyWith(
+                bibNumber: importedRunner.bibNumber,
+                age: importedRunner.age,
+                raceDistanceId: targetDistanceId,
+              ),
+              races: upcomingRaces,
+              executor: db,
+            );
             duplicateCount += 1;
             continue;
           }
 
-          await _databaseService.createRaceEntry(
+          final createdEntry = await _databaseService.createRaceEntry(
             runnerId: runner.id,
             raceId: race.id,
             barcodeValue: runner.barcodeValue,
             bibNumber: importedRunner.bibNumber,
             age: importedRunner.age,
             raceDistanceId: resolvedDistanceId,
+            executor: db,
+          );
+          copiedForwardCount += await _copyRosterRunnerToRaces(
+            runner: runner,
+            sourceEntry: createdEntry,
+            races: upcomingRaces,
             executor: db,
           );
           importedCount += 1;
@@ -1023,6 +1159,7 @@ class RaceService {
       newRunnerCount: newRunnerCount,
       duplicateCount: duplicateCount,
       invalidRowCount: invalidRowCount,
+      copiedForwardCount: copiedForwardCount,
     );
   }
 
@@ -1080,12 +1217,20 @@ class RaceService {
           return result;
         }
         if (entry.isFinished) {
+          final finishPlace = entry.finishTime == null
+              ? null
+              : await _databaseService.countFinishPlace(
+                  raceId: race.id,
+                  entryId: entry.id,
+                  finishTime: entry.finishTime!,
+                );
           final result = FinishScanResult.duplicateScan(
             runnerName: runner.name,
             barcodeValue: barcode,
             isEarlyStarter: entry.earlyStart,
             finishTime: entry.finishTime,
             elapsedTimeMs: entry.elapsedTimeMs,
+            finishPlace: finishPlace,
           );
           await _logScanOutcome(
             raceId: race.id,
@@ -1143,12 +1288,21 @@ class RaceService {
         runnerId = runner.id;
 
         if (entry.isFinished) {
+          final finishPlace = entry.finishTime == null
+              ? null
+              : await _databaseService.countFinishPlace(
+                  raceId: race.id,
+                  entryId: entry.id,
+                  finishTime: entry.finishTime!,
+                  executor: db,
+                );
           return FinishScanResult.duplicateScan(
             runnerName: runner.name,
             barcodeValue: barcode,
             isEarlyStarter: entry.earlyStart,
             finishTime: entry.finishTime,
             elapsedTimeMs: entry.elapsedTimeMs,
+            finishPlace: finishPlace,
           );
         }
 
@@ -1162,6 +1316,12 @@ class RaceService {
           entryId: entry.id,
           finishTime: finishTime,
           elapsedTimeMs: elapsedTimeMs < 0 ? 0 : elapsedTimeMs,
+          executor: db,
+        );
+        final finishPlace = await _databaseService.countFinishPlace(
+          raceId: race.id,
+          entryId: entry.id,
+          finishTime: finishTime,
           executor: db,
         );
 
@@ -1189,6 +1349,7 @@ class RaceService {
           finishTime: finishTime,
           elapsedTimeMs: elapsedTimeMs < 0 ? 0 : elapsedTimeMs,
           raceEndTime: raceEndTime,
+          finishPlace: finishPlace,
         );
       });
       await _logScanOutcome(
@@ -1535,6 +1696,22 @@ class RaceService {
     return DateFormat('HH:mm:ss.SS').format(timestamp.toLocal());
   }
 
+  static String formatOrdinal(int? value) {
+    if (value == null || value <= 0) {
+      return '--';
+    }
+    final mod100 = value % 100;
+    if (mod100 >= 11 && mod100 <= 13) {
+      return '${value}th';
+    }
+    return switch (value % 10) {
+      1 => '${value}st',
+      2 => '${value}nd',
+      3 => '${value}rd',
+      _ => '${value}th',
+    };
+  }
+
   Future<void> _logScanOutcome({
     int? raceId,
     int? runnerId,
@@ -1630,6 +1807,39 @@ class RaceService {
     return leftLocal.year == rightLocal.year &&
         leftLocal.month == rightLocal.month &&
         leftLocal.day == rightLocal.day;
+  }
+
+  List<Race> _previousRacesForRoster({
+    required Race targetRace,
+    required List<Race> races,
+  }) {
+    final previousRaces = races.where((race) {
+      return race.id != targetRace.id &&
+          _compareRosterRaceOrder(race, targetRace) < 0;
+    }).toList();
+    previousRaces.sort((left, right) => _compareRosterRaceOrder(right, left));
+    return previousRaces;
+  }
+
+  List<Race> _upcomingRacesForRoster({
+    required Race sourceRace,
+    required List<Race> races,
+  }) {
+    final upcomingRaces = races.where((race) {
+      return race.id != sourceRace.id &&
+          !race.isFinished &&
+          _compareRosterRaceOrder(race, sourceRace) > 0;
+    }).toList();
+    upcomingRaces.sort(_compareRosterRaceOrder);
+    return upcomingRaces;
+  }
+
+  int _compareRosterRaceOrder(Race left, Race right) {
+    final dateComparison = left.raceDate.compareTo(right.raceDate);
+    if (dateComparison != 0) {
+      return dateComparison;
+    }
+    return left.id.compareTo(right.id);
   }
 
   String _buildBulkRaceName({

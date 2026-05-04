@@ -1,8 +1,8 @@
 class AppConstants {
   const AppConstants._();
 
-  static const appName = 'RaceTimerApp';
-  static const logoAsset = 'assets/branding/roxbury_races_mark.png';
+  static const appName = 'Club Race Timer';
+  static const logoAsset = 'assets/branding/newlogo.png';
   static const databaseName = 'race_timer.db';
   static const printerChannel = 'com.racetimer/printer';
 
@@ -21,6 +21,7 @@ class AppConstants {
   static const settingsThemeModeKey = 'settings.themeMode';
   static const settingsPrinterHostKey = 'settings.printerHost';
   static const settingsPrinterMediaKey = 'settings.printerMedia';
+  static const settingsPrinterOrientationKey = 'settings.printerOrientation';
   static const settingsPrinterConnectionTypeKey =
       'settings.printerConnectionType';
   static const settingsSelectedRaceIdKey = 'settings.selectedRaceId';

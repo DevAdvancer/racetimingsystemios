@@ -10,6 +10,7 @@ class FinishScanResult {
     this.finishTime,
     this.elapsedTimeMs,
     this.raceEndTime,
+    this.finishPlace,
   });
 
   final FinishScanStatus status;
@@ -22,6 +23,7 @@ class FinishScanResult {
   final DateTime? finishTime;
   final int? elapsedTimeMs;
   final DateTime? raceEndTime;
+  final int? finishPlace;
 
   bool get isSuccess =>
       status == FinishScanStatus.success ||
@@ -43,6 +45,7 @@ class FinishScanResult {
     required DateTime finishTime,
     required int elapsedTimeMs,
     DateTime? raceEndTime,
+    int? finishPlace,
   }) {
     return FinishScanResult(
       status: FinishScanStatus.success,
@@ -54,6 +57,7 @@ class FinishScanResult {
       finishTime: finishTime,
       elapsedTimeMs: elapsedTimeMs,
       raceEndTime: raceEndTime,
+      finishPlace: finishPlace,
     );
   }
 
@@ -115,6 +119,7 @@ class FinishScanResult {
     bool isEarlyStarter = false,
     DateTime? finishTime,
     int? elapsedTimeMs,
+    int? finishPlace,
   }) {
     return FinishScanResult(
       status: FinishScanStatus.duplicateScan,
@@ -125,6 +130,7 @@ class FinishScanResult {
       isEarlyStarter: isEarlyStarter,
       finishTime: finishTime,
       elapsedTimeMs: elapsedTimeMs,
+      finishPlace: finishPlace,
     );
   }
 

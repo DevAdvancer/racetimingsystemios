@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:race_timer/core/app_navigation.dart';
 import 'package:race_timer/core/constants.dart';
 import 'package:race_timer/core/router.dart';
 import 'package:race_timer/models/race.dart';
 import 'package:race_timer/providers/points_provider.dart';
 import 'package:race_timer/providers/race_provider.dart';
+import 'package:race_timer/providers/results_provider.dart';
 import 'package:race_timer/screens/race_dashboard_screen.dart';
+import 'package:race_timer/screens/scanner_screen.dart';
 
 void main() {
   testWidgets('app launches on the choose race page', (tester) async {
@@ -94,6 +97,50 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Race Day Console'), findsAtLeastNWidgets(1));
+  });
+
+  testWidgets('scanner back button returns to race dashboard', (tester) async {
+    tester.view.physicalSize = const Size(2388, 1668);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    final router = GoRouter(
+      navigatorKey: appNavigatorKey,
+      initialLocation: AppRoutes.scanner,
+      routes: [
+        GoRoute(
+          path: AppRoutes.raceDashboard,
+          builder: (context, state) =>
+              const Scaffold(body: Center(child: Text('Race Dashboard'))),
+        ),
+        GoRoute(
+          path: AppRoutes.scanner,
+          builder: (context, state) => const ScannerScreen(),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [resultsProvider.overrideWith((ref) async => const [])],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Result Table'), findsOneWidget);
+    expect(find.text('Record Scan'), findsOneWidget);
+    expect(find.text('Race Dashboard'), findsOneWidget);
+    expect(find.text('No runners in this race yet.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.byTooltip('Back to Race Dashboard'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Race Dashboard'), findsOneWidget);
   });
 
   testWidgets('race dashboard back button returns to choose race', (

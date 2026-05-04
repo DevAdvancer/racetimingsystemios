@@ -70,6 +70,20 @@ class DatabaseService {
     return rows.map(Race.fromMap).toList();
   }
 
+  Future<List<RaceEntry>> listRaceEntries(
+    int raceId, {
+    DatabaseExecutor? executor,
+  }) async {
+    final db = await _resolveExecutor(executor);
+    final rows = await db.query(
+      'race_entries',
+      where: 'race_id = ?',
+      whereArgs: <Object?>[raceId],
+      orderBy: 'id ASC',
+    );
+    return rows.map(RaceEntry.fromMap).toList();
+  }
+
   Future<List<RaceDistanceConfig>> listRaceDistanceConfigs(
     int raceId, {
     DatabaseExecutor? executor,
@@ -927,6 +941,30 @@ class DatabaseService {
       <Object?>[raceId],
     );
     return (rows.first['unfinished_count'] as int?) ?? 0;
+  }
+
+  Future<int> countFinishPlace({
+    required int raceId,
+    required int entryId,
+    required DateTime finishTime,
+    DatabaseExecutor? executor,
+  }) async {
+    final db = await _resolveExecutor(executor);
+    final finishTimeMs = finishTime.toUtc().millisecondsSinceEpoch;
+    final rows = await db.rawQuery(
+      '''
+      SELECT COUNT(*) AS finish_place
+      FROM race_entries
+      WHERE race_id = ?
+        AND finish_time IS NOT NULL
+        AND (
+          finish_time < ?
+          OR (finish_time = ? AND id <= ?)
+        );
+      ''',
+      <Object?>[raceId, finishTimeMs, finishTimeMs, entryId],
+    );
+    return (rows.first['finish_place'] as int?) ?? 0;
   }
 
   Future<List<RunnerPointsSummary>> listRaceRunnerPointsSummaries(

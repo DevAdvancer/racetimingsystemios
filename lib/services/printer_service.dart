@@ -103,7 +103,7 @@ class MethodChannelPrinterService implements PrinterService {
         runnerName: 'Printer Test',
         barcodeValue: 'TEST-PRINT',
         raceId: 0,
-        raceName: 'RaceTimerApp',
+        raceName: 'Club Race Timer',
       ),
       methodName: 'testPrint',
       successFallback: 'Brother printer test label sent.',
@@ -135,6 +135,7 @@ class MethodChannelPrinterService implements PrinterService {
         extra: document.toMap(
           printerHost: settings.printerHost,
           printerMedia: settings.printerMedia,
+          printOrientation: settings.printerOrientation.storageValue,
         ),
       );
       final status = PrinterStatus.fromMap(result);
@@ -167,6 +168,7 @@ class MethodChannelPrinterService implements PrinterService {
     final payload = <String, Object?>{
       'printerHost': settings.printerHost,
       'printerMedia': settings.printerMedia,
+      'printOrientation': settings.printerOrientation.storageValue,
       'connectionType': settings.printerConnectionType.storageValue,
       ...extra,
     };

@@ -54,12 +54,32 @@ enum PrinterConnectionType {
   }
 }
 
+enum PrinterOrientation {
+  landscape,
+  portrait;
+
+  String get label => switch (this) {
+    PrinterOrientation.landscape => 'Landscape',
+    PrinterOrientation.portrait => 'Portrait',
+  };
+
+  String get storageValue => name;
+
+  static PrinterOrientation fromStorage(String? value) {
+    return PrinterOrientation.values.firstWhere(
+      (orientation) => orientation.storageValue == value,
+      orElse: () => PrinterOrientation.landscape,
+    );
+  }
+}
+
 class AppSettings {
   const AppSettings({
     required this.themeMode,
     required this.dryRunMode,
     required this.printerHost,
     required this.printerMedia,
+    required this.printerOrientation,
     required this.printerConnectionType,
     required this.adminPasscode,
     required this.selectedRaceId,
@@ -71,6 +91,7 @@ class AppSettings {
   final bool dryRunMode;
   final String printerHost;
   final String printerMedia;
+  final PrinterOrientation printerOrientation;
   final PrinterConnectionType printerConnectionType;
   final String adminPasscode;
   final int? selectedRaceId;
@@ -88,6 +109,7 @@ class AppSettings {
       dryRunMode: false,
       printerHost: AppConstants.defaultPrinterHost,
       printerMedia: AppConstants.defaultPrinterMedia,
+      printerOrientation: PrinterOrientation.landscape,
       printerConnectionType: PrinterConnectionType.network,
       adminPasscode: '123',
       selectedRaceId: null,
@@ -101,6 +123,7 @@ class AppSettings {
     bool? dryRunMode,
     String? printerHost,
     String? printerMedia,
+    PrinterOrientation? printerOrientation,
     PrinterConnectionType? printerConnectionType,
     String? adminPasscode,
     int? selectedRaceId,
@@ -114,6 +137,7 @@ class AppSettings {
       dryRunMode: dryRunMode ?? this.dryRunMode,
       printerHost: printerHost ?? this.printerHost,
       printerMedia: printerMedia ?? this.printerMedia,
+      printerOrientation: printerOrientation ?? this.printerOrientation,
       printerConnectionType:
           printerConnectionType ?? this.printerConnectionType,
       adminPasscode: adminPasscode ?? this.adminPasscode,

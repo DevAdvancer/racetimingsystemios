@@ -37,9 +37,6 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       TextEditingController();
   final TextEditingController _raceNameController = TextEditingController();
   final TextEditingController _printerHostController = TextEditingController();
-  final TextEditingController _printerMediaController = TextEditingController(
-    text: AppConstants.defaultPrinterMedia,
-  );
   final TextEditingController _scannerCheckController = TextEditingController();
   final FocusNode _scannerCheckFocusNode = FocusNode();
   late final Future<PackageInfo> _packageInfoFuture;
@@ -47,23 +44,11 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   bool _discoveringPrinters = false;
   bool _loadedSettings = false;
   String? _printerDiscoveryMessage;
+  String? _loadedPrinterMedia;
   PrinterConnectionType _printerConnectionType = PrinterConnectionType.network;
+  PrinterOrientation _printerOrientation = PrinterOrientation.landscape;
   DateTime? _lastScannerCheckAt;
   String? _lastScannerCheckValue;
-
-  String _normalizePrinterMediaValue(String value) {
-    final trimmed = value.trim().toLowerCase();
-    if (trimmed.isEmpty) {
-      return AppConstants.defaultPrinterMedia;
-    }
-    if (trimmed == '62mm continuous' ||
-        trimmed == '62 continuous' ||
-        trimmed == '62mm roll' ||
-        trimmed == '62 roll') {
-      return AppConstants.defaultPrinterMedia;
-    }
-    return value.trim();
-  }
 
   @override
   void initState() {
@@ -79,7 +64,6 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
     _bulkSeriesNameController.dispose();
     _raceNameController.dispose();
     _printerHostController.dispose();
-    _printerMediaController.dispose();
     _scannerCheckController.dispose();
     _scannerCheckFocusNode.dispose();
     super.dispose();
@@ -173,7 +157,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
     final status = await ref.read(printerServiceProvider).configure();
     final loadedMedia = _loadedMediaFromStatus(status);
     if (loadedMedia != null) {
-      _printerMediaController.text = loadedMedia;
+      _loadedPrinterMedia = loadedMedia;
       await _savePrinterSettings();
     }
     return status;
@@ -187,7 +171,8 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
         AppSettings.defaults();
     final updated = currentSettings.copyWith(
       printerHost: _printerHostController.text.trim(),
-      printerMedia: _normalizePrinterMediaValue(_printerMediaController.text),
+      printerMedia: _loadedPrinterMedia ?? currentSettings.printerMedia,
+      printerOrientation: _printerOrientation,
       printerConnectionType: _printerConnectionType,
     );
     return ref.read(settingsProvider.notifier).saveSettings(updated);
@@ -215,7 +200,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   String _printerStatusSummary(PrinterStatus status) {
     final loadedMedia = _loadedMediaFromStatus(status);
     if (status.isReady && loadedMedia != null) {
-      return 'Verified connection and updated label size to $loadedMedia.';
+      return 'Verified connection using the loaded $loadedMedia label roll.';
     }
     if (status.isReady) {
       return 'Verified connection.';
@@ -237,11 +222,12 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       }
       _loadedSettings = true;
       _printerHostController.text = settings.printerHost;
-      _printerMediaController.text = _normalizePrinterMediaValue(
-        settings.printerMedia,
-      );
+      _loadedPrinterMedia = settings.printerMedia.trim().isEmpty
+          ? null
+          : settings.printerMedia;
       _adminPasscodeController.text = settings.adminPasscode;
       _printerConnectionType = settings.printerConnectionType;
+      _printerOrientation = settings.printerOrientation;
       _lastScannerCheckAt = settings.lastScannerCheckAt;
       _lastScannerCheckValue = settings.lastScannerCheckValue;
     });
@@ -429,7 +415,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                   title: 'Printer Setup and Verify',
                   children: [
                     Text(
-                      'Set up the Brother QL-820NWB connection for this iPad. The app defaults to ${AppConstants.defaultPrinterHost} and will try to auto-connect to that printer name.',
+                      'Set up the Brother QL-820NWB connection for this iPad. The app defaults to ${AppConstants.defaultPrinterHost}, prints landscape by default, and uses the label roll currently loaded in the printer.',
                       style: Theme.of(context).textTheme.bodyLarge,
                     ),
                     const SizedBox(height: 16),
@@ -476,13 +462,32 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    TextField(
-                      controller: _printerMediaController,
-                      decoration: const InputDecoration(
-                        labelText: 'Label size',
-                        helperText:
-                            'Use 62mm for the standard Brother label roll.',
-                      ),
+                    SegmentedButton<PrinterOrientation>(
+                      segments: const [
+                        ButtonSegment<PrinterOrientation>(
+                          value: PrinterOrientation.landscape,
+                          icon: Icon(Icons.stay_current_landscape_outlined),
+                          label: Text('Landscape'),
+                        ),
+                        ButtonSegment<PrinterOrientation>(
+                          value: PrinterOrientation.portrait,
+                          icon: Icon(Icons.stay_current_portrait_outlined),
+                          label: Text('Portrait'),
+                        ),
+                      ],
+                      selected: <PrinterOrientation>{_printerOrientation},
+                      onSelectionChanged: (selection) {
+                        setState(() {
+                          _printerOrientation = selection.first;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    StatusBanner(
+                      title: 'Loaded label roll',
+                      message:
+                          'The printer reports the label size at check/print time.${_loadedPrinterMedia == null ? '' : ' Last detected: $_loadedPrinterMedia.'}',
+                      tone: StatusBannerTone.info,
                     ),
                     const SizedBox(height: 16),
                     OutlinedButton.icon(

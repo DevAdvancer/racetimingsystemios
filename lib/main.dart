@@ -23,13 +23,13 @@ Future<void> main() async {
         databaseHelperProvider.overrideWithValue(databaseHelper),
         settingsServiceProvider.overrideWithValue(settingsService),
       ],
-      child: const RaceTimerApp(),
+      child: const ClubRaceTimerApp(),
     ),
   );
 }
 
-class RaceTimerApp extends ConsumerWidget {
-  const RaceTimerApp({super.key});
+class ClubRaceTimerApp extends ConsumerWidget {
+  const ClubRaceTimerApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

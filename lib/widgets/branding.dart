@@ -27,7 +27,7 @@ class BrandMark extends StatelessWidget {
           AppConstants.logoAsset,
           height: size,
           width: size,
-          fit: BoxFit.cover,
+          fit: BoxFit.contain,
           errorBuilder: (context, error, stackTrace) => Container(
             height: size,
             width: size,

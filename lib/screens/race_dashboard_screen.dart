@@ -143,9 +143,9 @@ class RaceDashboardScreen extends ConsumerWidget {
                       onTap: () => goToAppRoute(context, AppRoutes.raceControl),
                     ),
                     PrimaryActionTile(
-                      title: 'Timing Capture',
+                      title: 'Result Table',
                       subtitle:
-                          'Capture barcode scans for early starts and finishes.',
+                          'Capture barcode scans and view the live result table.',
                       icon: Icons.qr_code_scanner,
                       onTap: () => goToAppRoute(context, AppRoutes.scanner),
                     ),

@@ -83,30 +83,50 @@ class _RaceClockState extends State<RaceClock> {
     final gunTime = widget.gunTime;
     final endTime = widget.endTime;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Race Clock', style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 12),
-            Text(
-              RaceService.formatElapsed(_elapsedTimeMs),
-              style: Theme.of(context).textTheme.displaySmall,
+    return SizedBox(
+      width: double.infinity,
+      child: Card(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 280),
+          child: Padding(
+            padding: const EdgeInsets.all(40),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  'Race Clock',
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                FittedBox(
+                  alignment: Alignment.centerLeft,
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    RaceService.formatElapsed(_elapsedTimeMs),
+                    style: Theme.of(context).textTheme.displayLarge?.copyWith(
+                      fontSize: 96,
+                      fontWeight: FontWeight.w800,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  gunTime == null
+                      ? 'Clock begins when the race starts.'
+                      : widget.isRunning
+                      ? 'Started at ${RaceService.formatFinishTime(gunTime)}'
+                      : endTime == null
+                      ? 'Clock stopped. Started at ${RaceService.formatFinishTime(gunTime)}'
+                      : 'Clock stopped at ${RaceService.formatFinishTime(endTime)}. Started at ${RaceService.formatFinishTime(gunTime)}',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
-            Text(
-              gunTime == null
-                  ? 'Clock begins when the race starts.'
-                  : widget.isRunning
-                  ? 'Started at ${RaceService.formatFinishTime(gunTime)}'
-                  : endTime == null
-                  ? 'Clock stopped. Started at ${RaceService.formatFinishTime(gunTime)}'
-                  : 'Clock stopped at ${RaceService.formatFinishTime(endTime)}. Started at ${RaceService.formatFinishTime(gunTime)}',
-              style: Theme.of(context).textTheme.bodyLarge,
-            ),
-          ],
+          ),
         ),
       ),
     );

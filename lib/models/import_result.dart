@@ -18,6 +18,7 @@ class ImportResult {
     this.duplicateCount = 0,
     this.invalidRowCount = 0,
     this.skippedCount = 0,
+    this.copiedForwardCount = 0,
   });
 
   final ImportOutcome outcome;
@@ -29,6 +30,7 @@ class ImportResult {
   final int duplicateCount;
   final int invalidRowCount;
   final int skippedCount;
+  final int copiedForwardCount;
 
   bool get isSuccess => outcome == ImportOutcome.success;
 
@@ -71,6 +73,7 @@ class ImportResult {
     required int newRunnerCount,
     required int duplicateCount,
     required int invalidRowCount,
+    int copiedForwardCount = 0,
   }) {
     final skippedCount = duplicateCount + invalidRowCount;
     return ImportResult(
@@ -82,6 +85,7 @@ class ImportResult {
       duplicateCount: duplicateCount,
       invalidRowCount: invalidRowCount,
       skippedCount: skippedCount,
+      copiedForwardCount: copiedForwardCount,
       message: _buildSuccessMessage(
         sourceName: sourceName,
         importedCount: importedCount,
@@ -89,6 +93,7 @@ class ImportResult {
         newRunnerCount: newRunnerCount,
         duplicateCount: duplicateCount,
         invalidRowCount: invalidRowCount,
+        copiedForwardCount: copiedForwardCount,
       ),
     );
   }
@@ -101,6 +106,7 @@ String _buildSuccessMessage({
   required int newRunnerCount,
   required int duplicateCount,
   required int invalidRowCount,
+  required int copiedForwardCount,
 }) {
   final sentences = <String>[
     'Imported $importedCount runners from $sourceName.',
@@ -113,6 +119,11 @@ String _buildSuccessMessage({
   if (invalidRowCount > 0) {
     sentences.add(
       'Ignored $invalidRowCount invalid rows with missing or conflicting data.',
+    );
+  }
+  if (copiedForwardCount > 0) {
+    sentences.add(
+      'Kept this roster on $copiedForwardCount upcoming race ${copiedForwardCount == 1 ? 'entry' : 'entries'}.',
     );
   }
 

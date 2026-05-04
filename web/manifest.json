@@ -1,11 +1,11 @@
 {
-    "name": "RaceTimerApp",
-    "short_name": "RaceTimerApp",
+    "name": "Club Race Timer",
+    "short_name": "Club Race Timer",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "RaceTimerApp race-day timing and registration dashboard.",
+    "description": "Club Race Timer race-day timing and registration dashboard.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
