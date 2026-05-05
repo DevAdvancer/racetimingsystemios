@@ -19,6 +19,7 @@ class LabelDocument {
     required String printerHost,
     required String printerMedia,
     required String printOrientation,
+    required String printResolution,
   }) {
     return <String, Object?>{
       'runnerName': runnerName,
@@ -30,6 +31,7 @@ class LabelDocument {
       'printerHost': printerHost,
       'printerMedia': printerMedia,
       'printOrientation': printOrientation,
+      'printResolution': printResolution,
     };
   }
 }

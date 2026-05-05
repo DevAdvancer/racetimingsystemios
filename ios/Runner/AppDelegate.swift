@@ -70,6 +70,37 @@ private enum PrintOrientationKind: String {
   }
 }
 
+private enum PrintResolutionKind: String {
+  case low
+  case high
+
+  init(storageValue: String?) {
+    self = PrintResolutionKind(rawValue: storageValue ?? "") ?? .low
+  }
+
+  var sdkResolution: BRLMPrintSettingsResolution {
+    switch self {
+    case .low:
+      return .low
+    case .high:
+      return .high
+    }
+  }
+
+  var sdkQuality: BRLMPrintSettingsPrintQuality {
+    switch self {
+    case .low:
+      return .fast
+    case .high:
+      return .best
+    }
+  }
+
+  var usesFastPath: Bool {
+    self == .low
+  }
+}
+
 private struct PrinterRequest {
   init(arguments: [String: Any]) {
     host = ((arguments["host"] as? String) ?? (arguments["printerHost"] as? String))?
@@ -79,6 +110,9 @@ private struct PrinterRequest {
     connectionType = PrinterConnectionKind(storageValue: arguments["connectionType"] as? String)
     printOrientation = PrintOrientationKind(
       storageValue: (arguments["printOrientation"] as? String) ?? (arguments["printerOrientation"] as? String)
+    )
+    printResolution = PrintResolutionKind(
+      storageValue: (arguments["printResolution"] as? String) ?? (arguments["printerResolution"] as? String)
     )
     runnerName = (arguments["runnerName"] as? String)?
       .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -92,6 +126,7 @@ private struct PrinterRequest {
   let media: String?
   let connectionType: PrinterConnectionKind
   let printOrientation: PrintOrientationKind
+  let printResolution: PrintResolutionKind
   let runnerName: String?
   let barcodeValue: String?
   let raceName: String?
@@ -239,6 +274,7 @@ final class BrotherPrinterBridge: NSObject {
         "media": request.media as Any,
         "connectionType": request.connectionType.rawValue,
         "printOrientation": request.printOrientation.rawValue,
+        "printResolution": request.printResolution.rawValue,
         "runnerName": "Printer Test",
         "barcodeValue": "TEST-PRINT",
         "raceName": "Club Race Timer"
@@ -325,7 +361,9 @@ final class BrotherPrinterBridge: NSObject {
       let loadedMediaDescription = self.describeMedia(status.mediaInfo)
       guard let printSettings = self.makePrintSettings(
         loadedMedia: status.mediaInfo,
-        orientation: request.printOrientation
+        savedMedia: request.media,
+        orientation: request.printOrientation,
+        resolution: request.printResolution
       ) else {
         let mediaMessage = loadedMediaDescription.map {
           "The loaded label size \($0) is not supported for this app's Brother QL-820NWB labels."
@@ -366,7 +404,8 @@ final class BrotherPrinterBridge: NSObject {
         return
       }
 
-      if resolved.channel.channelType == .bluetoothMFi || resolved.channel.channelType == .bluetoothLowEnergy {
+      if !request.printResolution.usesFastPath &&
+          (resolved.channel.channelType == .bluetoothMFi || resolved.channel.channelType == .bluetoothLowEnergy) {
         Thread.sleep(forTimeInterval: 2.0)
         let postPrintStatus = driver.getPrinterStatus()
         guard postPrintStatus.error.code == .noError else {
@@ -415,6 +454,19 @@ final class BrotherPrinterBridge: NSObject {
     switch request.connectionType {
     case .network:
       if let host = request.host, !host.isEmpty {
+        if isDirectNetworkTarget(host) {
+          return (
+            ResolvedPrinter(
+              channel: BRLMChannel(wifiIPAddress: host),
+              host: host,
+              connectionType: .network,
+              modelName: "QL-820NWB",
+              automaticallyDiscovered: false
+            ),
+            nil
+          )
+        }
+
         let matches = matchingNetworkChannels(for: host)
         if let first = matches.first, matches.count == 1 {
           return (
@@ -605,6 +657,16 @@ final class BrotherPrinterBridge: NSObject {
       .lowercased()
   }
 
+  private func isDirectNetworkTarget(_ value: String) -> Bool {
+    let normalized = normalizedNetworkIdentifier(value)
+    if normalized.hasSuffix(".local") || normalized.contains(".") {
+      return true
+    }
+
+    let ipv4Pattern = #"^\d{1,3}(\.\d{1,3}){3}$"#
+    return normalized.range(of: ipv4Pattern, options: .regularExpression) != nil
+  }
+
   private func matchesBluetoothTarget(query: String, channel: BRLMChannel) -> Bool {
     let normalizedQuery = normalizedIdentifier(query)
     let candidates = [
@@ -697,17 +759,25 @@ final class BrotherPrinterBridge: NSObject {
 
   private func makePrintSettings(
     loadedMedia: BRLMMediaInfo? = nil,
-    orientation: PrintOrientationKind
+    savedMedia: String?,
+    orientation: PrintOrientationKind,
+    resolution: PrintResolutionKind
   ) -> BRLMQLPrintSettings? {
     guard let printSettings = BRLMQLPrintSettings(defaultPrintSettingsWith: .QL_820NWB) else {
       return nil
     }
 
-    guard let labelSize = qlLabelSize(for: loadedMedia) else {
+    guard let labelSize = qlLabelSize(for: loadedMedia) ?? qlLabelSize(for: savedMedia) else {
       return nil
     }
     printSettings.labelSize = labelSize
     printSettings.printOrientation = orientation.sdkValue
+    printSettings.resolution = resolution.sdkResolution
+    printSettings.printQuality = resolution.sdkQuality
+    printSettings.skipStatusCheck = resolution.usesFastPath
+    printSettings.trimTrailingBlankData = true
+    printSettings.compress = resolution.usesFastPath ? .tiff : .mode9
+    printSettings.halftone = .threshold
 
     printSettings.autoCut = true
     printSettings.cutAtEnd = true
@@ -717,6 +787,12 @@ final class BrotherPrinterBridge: NSObject {
   private func qlLabelSize(for mediaInfo: BRLMMediaInfo?) -> BRLMQLPrintSettingsLabelSize? {
     guard let mediaInfo else {
       return nil
+    }
+
+    var succeeded = false
+    let sdkLabelSize = mediaInfo.getQLLabelSize(&succeeded)
+    if succeeded {
+      return sdkLabelSize
     }
 
     if mediaInfo.isHeightInfinite {
@@ -767,6 +843,12 @@ final class BrotherPrinterBridge: NSObject {
       return .dieCutW62H75
     case (62, 100):
       return .dieCutW62H100
+    case (102, 51):
+      return .dieCutW102H51
+    case (102, 152):
+      return .dieCutW102H152
+    case (103, 164):
+      return .dieCutW103H164
     default:
       return nil
     }
@@ -775,18 +857,44 @@ final class BrotherPrinterBridge: NSObject {
   private func qlLabelSize(for media: String?) -> BRLMQLPrintSettingsLabelSize? {
     let mediaValue = normalizedMediaValue(media)
     switch mediaValue {
+    case "12", "12mm", "12mmcontinuous", "12continuous", "12mmroll", "12roll":
+      return .rollW12
+    case "38", "38mm", "38mmcontinuous", "38continuous", "38mmroll", "38roll":
+      return .rollW38
+    case "50", "50mm", "50mmcontinuous", "50continuous", "50mmroll", "50roll":
+      return .rollW50
+    case "54", "54mm", "54mmcontinuous", "54continuous", "54mmroll", "54roll":
+      return .rollW54
     case "", "62", "62mm", "62mmcontinuous", "62continuous", "62mmroll", "62roll":
       return .rollW62
     case "62mmredblack", "62redblack", "62mmrb", "62rb":
       return .rollW62RB
+    case "102", "102mm", "102mmcontinuous", "102continuous", "102mmroll", "102roll":
+      return .rollW102
+    case "103", "103mm", "103mmcontinuous", "103continuous", "103mmroll", "103roll":
+      return .rollW103
     case "29", "29mm", "29mmcontinuous", "29continuous", "29mmroll", "29roll":
       return .rollW29
+    case "17x54", "17mmx54mm", "17mmdiecut54":
+      return .dieCutW17H54
+    case "17x87", "17mmx87mm", "17mmdiecut87":
+      return .dieCutW17H87
+    case "23x23", "23mmx23mm", "23mmdiecut23":
+      return .dieCutW23H23
     case "29x42", "29mmx42mm", "29mmdiecut42":
       return .dieCutW29H42
     case "29x90", "29mmx90mm", "29mmdiecut90":
       return .dieCutW29H90
     case "38x90", "38mmx90mm", "38mmdiecut90":
       return .dieCutW38H90
+    case "39x48", "39mmx48mm", "39mmdiecut48":
+      return .dieCutW39H48
+    case "52x29", "52mmx29mm", "52mmdiecut29":
+      return .dieCutW52H29
+    case "54x29", "54mmx29mm", "54mmdiecut29":
+      return .dieCutW54H29
+    case "60x86", "60mmx86mm", "60mmdiecut86":
+      return .dieCutW60H86
     case "62x29", "62mmx29mm", "62mmdiecut29":
       return .dieCutW62H29
     case "62x60", "62mmx60mm":
@@ -795,6 +903,12 @@ final class BrotherPrinterBridge: NSObject {
       return .dieCutW62H75
     case "62x100", "62mmx100mm":
       return .dieCutW62H100
+    case "102x51", "102mmx51mm", "102mmdiecut51":
+      return .dieCutW102H51
+    case "102x152", "102mmx152mm", "102mmdiecut152":
+      return .dieCutW102H152
+    case "103x164", "103mmx164mm", "103mmdiecut164":
+      return .dieCutW103H164
     default:
       return nil
     }

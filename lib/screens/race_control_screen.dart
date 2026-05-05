@@ -9,6 +9,7 @@ import 'package:race_timer/providers/race_provider.dart';
 import 'package:race_timer/providers/results_provider.dart';
 import 'package:race_timer/services/race_service.dart';
 import 'package:race_timer/widgets/branding.dart';
+import 'package:race_timer/widgets/finish_scan_keyboard_listener.dart';
 import 'package:race_timer/widgets/race_clock.dart';
 import 'package:race_timer/widgets/status_banner.dart';
 import 'package:race_timer/widgets/user_dialogs.dart';
@@ -20,171 +21,182 @@ class RaceControlScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final raceAsync = ref.watch(currentRaceProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const BrandAppBarTitle(pageTitle: 'Race Timing'),
-        actions: [
-          IconButton(
-            tooltip: 'Back to Race Dashboard',
-            onPressed: () => context.go(AppRoutes.raceDashboard),
-            icon: const Icon(Icons.arrow_back),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: raceAsync.when(
-            data: (race) {
-              if (race == null) {
-                return const StatusBanner(
-                  title: 'No active race',
-                  message: 'Create a race in Setup before starting the clock.',
-                  tone: StatusBannerTone.warning,
+    return FinishScanKeyboardListener(
+      child: Scaffold(
+        appBar: AppBar(
+          title: const BrandAppBarTitle(pageTitle: 'Race Timing'),
+          actions: [
+            IconButton(
+              tooltip: 'Back to Race Dashboard',
+              onPressed: () => context.go(AppRoutes.raceDashboard),
+              icon: const Icon(Icons.arrow_back),
+            ),
+          ],
+        ),
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: raceAsync.when(
+              data: (race) {
+                if (race == null) {
+                  return const StatusBanner(
+                    title: 'No active race',
+                    message:
+                        'Create a race in Setup before starting the clock.',
+                    tone: StatusBannerTone.warning,
+                  );
+                }
+                final raceResultsAsync = ref.watch(
+                  raceResultsProvider(race.id),
                 );
-              }
-              final raceResultsAsync = ref.watch(raceResultsProvider(race.id));
 
-              return SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    StatusBanner(
-                      title: race.name,
-                      message: _buildRaceStatusMessage(race),
-                      tone: race.isRunning
-                          ? StatusBannerTone.success
-                          : StatusBannerTone.info,
-                    ),
-                    const SizedBox(height: 20),
-                    RaceClock(
-                      gunTime: race.gunTime,
-                      endTime: race.endTime,
-                      isRunning: race.isRunning,
-                    ),
-                    const SizedBox(height: 20),
-                    _EarlyStartersList(resultsAsync: raceResultsAsync),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 88,
-                      child: ElevatedButton(
-                        onPressed: race.isRunning || race.isFinished
-                            ? null
-                            : () async {
-                                final confirmed = await _confirmAction(
-                                  context,
-                                  title: 'Record global start?',
-                                  message:
-                                      'This will record the global start time for everyone except early starters.',
-                                );
-                                if (!confirmed) {
-                                  return;
-                                }
-                                try {
-                                  await ref
-                                      .read(currentRaceProvider.notifier)
-                                      .startRace(race.id);
-                                  ref.invalidate(raceResultsProvider(race.id));
-                                  ref.invalidate(resultsProvider);
-                                  if (context.mounted) {
-                                    await showUserMessageDialog(
-                                      context,
-                                      title: 'Global start recorded',
-                                      message:
-                                          'The race clock is now running. Runner scans will now record finishes for everyone without an earlier personal start.',
-                                      tone: UserDialogTone.success,
-                                    );
-                                  }
-                                } catch (error) {
-                                  if (context.mounted) {
-                                    await showUserMessageDialog(
-                                      context,
-                                      title: 'Could not record global start',
-                                      message:
-                                          'The global start could not be recorded. Please try again.',
-                                      tone: UserDialogTone.error,
-                                    );
-                                  }
-                                }
-                              },
-                        child: const Text('GLOBAL START'),
+                return SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      StatusBanner(
+                        title: race.name,
+                        message: _buildRaceStatusMessage(race),
+                        tone: race.isRunning
+                            ? StatusBannerTone.success
+                            : StatusBannerTone.info,
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 88,
-                      child: FilledButton(
-                        onPressed: !race.isRunning || race.isFinished
-                            ? null
-                            : () async {
-                                final unfinishedCount = await ref
-                                    .read(raceServiceProvider)
-                                    .countUnfinishedEntries(race.id);
-                                if (!context.mounted) {
-                                  return;
-                                }
-                                final confirmed = await _confirmAction(
-                                  context,
-                                  title: 'Stop race?',
-                                  message: unfinishedCount == 0
-                                      ? 'This will record the global stop time and close finish scanning for this race.'
-                                      : 'This will record the global stop time. $unfinishedCount ${unfinishedCount == 1 ? 'runner has' : 'runners have'} no finish scan yet, so ${unfinishedCount == 1 ? 'that runner will' : 'those runners will'} be completed using the stop time.',
-                                );
-                                if (!confirmed) {
-                                  return;
-                                }
-                                try {
-                                  await ref
-                                      .read(currentRaceProvider.notifier)
-                                      .endRace(race.id);
-                                  ref.invalidate(raceResultsProvider(race.id));
-                                  ref.invalidate(resultsProvider);
-                                  if (context.mounted) {
-                                    await showUserMessageDialog(
-                                      context,
-                                      title: 'Global stop recorded',
-                                      message: unfinishedCount == 0
-                                          ? 'The race clock is now stopped and finish scanning is closed.'
-                                          : 'The race clock is now stopped. $unfinishedCount ${unfinishedCount == 1 ? 'runner was' : 'runners were'} assigned the global stop time because no finish scan was recorded.',
-                                      tone: UserDialogTone.success,
-                                    );
+                      const SizedBox(height: 20),
+                      RaceClock(
+                        gunTime: race.gunTime,
+                        endTime: race.endTime,
+                        isRunning: race.isRunning,
+                      ),
+                      const SizedBox(height: 20),
+                      _EarlyStartersList(resultsAsync: raceResultsAsync),
+                      const SizedBox(height: 20),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 88,
+                        child: ElevatedButton(
+                          onPressed: race.isRunning || race.isFinished
+                              ? null
+                              : () async {
+                                  final confirmed = await _confirmAction(
+                                    context,
+                                    title: 'Record global start?',
+                                    message:
+                                        'This will record the global start time for everyone except early starters.',
+                                  );
+                                  if (!confirmed) {
+                                    return;
                                   }
-                                } catch (error) {
-                                  if (context.mounted) {
-                                    await showUserMessageDialog(
-                                      context,
-                                      title: 'Could not stop race',
-                                      message:
-                                          'The race could not be stopped. Please try again.',
-                                      tone: UserDialogTone.error,
+                                  try {
+                                    await ref
+                                        .read(currentRaceProvider.notifier)
+                                        .startRace(race.id);
+                                    ref.invalidate(
+                                      raceResultsProvider(race.id),
                                     );
+                                    ref.invalidate(resultsProvider);
+                                    if (context.mounted) {
+                                      await showUserMessageDialog(
+                                        context,
+                                        title: 'Global start recorded',
+                                        message:
+                                            'The race clock is now running. Runner scans will now record finishes for everyone without an earlier personal start.',
+                                        tone: UserDialogTone.success,
+                                      );
+                                    }
+                                  } catch (error) {
+                                    if (context.mounted) {
+                                      await showUserMessageDialog(
+                                        context,
+                                        title: 'Could not record global start',
+                                        message:
+                                            'The global start could not be recorded. Please try again.',
+                                        tone: UserDialogTone.error,
+                                      );
+                                    }
                                   }
-                                }
-                              },
-                        style: FilledButton.styleFrom(
-                          backgroundColor: Theme.of(context).colorScheme.error,
-                          foregroundColor: Theme.of(
-                            context,
-                          ).colorScheme.onError,
+                                },
+                          child: const Text('GLOBAL START'),
                         ),
-                        child: const Text('GLOBAL STOP'),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 88,
+                        child: FilledButton(
+                          onPressed: !race.isRunning || race.isFinished
+                              ? null
+                              : () async {
+                                  final unfinishedCount = await ref
+                                      .read(raceServiceProvider)
+                                      .countUnfinishedEntries(race.id);
+                                  if (!context.mounted) {
+                                    return;
+                                  }
+                                  final confirmed = await _confirmAction(
+                                    context,
+                                    title: 'Stop race?',
+                                    message: unfinishedCount == 0
+                                        ? 'This will record the global stop time and close finish scanning for this race.'
+                                        : 'This will record the global stop time. $unfinishedCount ${unfinishedCount == 1 ? 'runner has' : 'runners have'} no finish scan yet, so ${unfinishedCount == 1 ? 'that runner will' : 'those runners will'} be completed using the stop time.',
+                                  );
+                                  if (!confirmed) {
+                                    return;
+                                  }
+                                  try {
+                                    await ref
+                                        .read(currentRaceProvider.notifier)
+                                        .endRace(race.id);
+                                    ref.invalidate(
+                                      raceResultsProvider(race.id),
+                                    );
+                                    ref.invalidate(resultsProvider);
+                                    if (context.mounted) {
+                                      await showUserMessageDialog(
+                                        context,
+                                        title: 'Global stop recorded',
+                                        message: unfinishedCount == 0
+                                            ? 'The race clock is now stopped and finish scanning is closed.'
+                                            : 'The race clock is now stopped. $unfinishedCount ${unfinishedCount == 1 ? 'runner was' : 'runners were'} assigned the global stop time because no finish scan was recorded.',
+                                        tone: UserDialogTone.success,
+                                      );
+                                    }
+                                  } catch (error) {
+                                    if (context.mounted) {
+                                      await showUserMessageDialog(
+                                        context,
+                                        title: 'Could not stop race',
+                                        message:
+                                            'The race could not be stopped. Please try again.',
+                                        tone: UserDialogTone.error,
+                                      );
+                                    }
+                                  }
+                                },
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Theme.of(
+                              context,
+                            ).colorScheme.error,
+                            foregroundColor: Theme.of(
+                              context,
+                            ).colorScheme.onError,
+                          ),
+                          child: const Text('GLOBAL STOP'),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (error, stackTrace) => StatusBanner(
+                title: 'Race control unavailable',
+                message: userFacingErrorMessage(
+                  error,
+                  fallback:
+                      'Race control is not available right now. Please return to the dashboard and try again.',
                 ),
-              );
-            },
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, stackTrace) => StatusBanner(
-              title: 'Race control unavailable',
-              message: userFacingErrorMessage(
-                error,
-                fallback:
-                    'Race control is not available right now. Please return to the dashboard and try again.',
+                tone: StatusBannerTone.error,
               ),
-              tone: StatusBannerTone.error,
             ),
           ),
         ),
@@ -238,7 +250,7 @@ class _EarlyStartersList extends StatelessWidget {
           return const StatusBanner(
             title: 'Early starters',
             message:
-                'No personal start times have been recorded yet. Before the global start, scan a runner barcode in Result Table to add one here.',
+                'No personal start times have been recorded yet. Before the global start, scan a runner barcode here or in Result Table to add one here.',
             tone: StatusBannerTone.info,
           );
         }

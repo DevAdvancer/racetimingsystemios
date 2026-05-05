@@ -22,6 +22,7 @@ class AppConstants {
   static const settingsPrinterHostKey = 'settings.printerHost';
   static const settingsPrinterMediaKey = 'settings.printerMedia';
   static const settingsPrinterOrientationKey = 'settings.printerOrientation';
+  static const settingsPrinterResolutionKey = 'settings.printerResolution';
   static const settingsPrinterConnectionTypeKey =
       'settings.printerConnectionType';
   static const settingsSelectedRaceIdKey = 'settings.selectedRaceId';

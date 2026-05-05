@@ -47,6 +47,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
   String? _loadedPrinterMedia;
   PrinterConnectionType _printerConnectionType = PrinterConnectionType.network;
   PrinterOrientation _printerOrientation = PrinterOrientation.landscape;
+  PrinterResolution _printerResolution = PrinterResolution.low;
   DateTime? _lastScannerCheckAt;
   String? _lastScannerCheckValue;
 
@@ -173,6 +174,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       printerHost: _printerHostController.text.trim(),
       printerMedia: _loadedPrinterMedia ?? currentSettings.printerMedia,
       printerOrientation: _printerOrientation,
+      printerResolution: _printerResolution,
       printerConnectionType: _printerConnectionType,
     );
     return ref.read(settingsProvider.notifier).saveSettings(updated);
@@ -228,6 +230,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
       _adminPasscodeController.text = settings.adminPasscode;
       _printerConnectionType = settings.printerConnectionType;
       _printerOrientation = settings.printerOrientation;
+      _printerResolution = settings.printerResolution;
       _lastScannerCheckAt = settings.lastScannerCheckAt;
       _lastScannerCheckValue = settings.lastScannerCheckValue;
     });
@@ -280,7 +283,7 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                       builder: (context, snapshot) {
                         final message = switch (snapshot.connectionState) {
                           ConnectionState.done when snapshot.hasData =>
-                            'Current version: ${snapshot.data!.version} (build ${snapshot.data!.buildNumber}).',
+                            'Current version: ${snapshot.data!.version}.',
                           ConnectionState.done =>
                             'The app version could not be loaded on this device right now.',
                           _ =>
@@ -483,10 +486,40 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                       },
                     ),
                     const SizedBox(height: 12),
+                    SegmentedButton<PrinterResolution>(
+                      segments: const [
+                        ButtonSegment<PrinterResolution>(
+                          value: PrinterResolution.low,
+                          icon: Icon(Icons.bolt_outlined),
+                          label: Text('Fast / Low Res'),
+                        ),
+                        ButtonSegment<PrinterResolution>(
+                          value: PrinterResolution.high,
+                          icon: Icon(Icons.high_quality_outlined),
+                          label: Text('High Res'),
+                        ),
+                      ],
+                      selected: <PrinterResolution>{_printerResolution},
+                      onSelectionChanged: (selection) {
+                        setState(() {
+                          _printerResolution = selection.first;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    StatusBanner(
+                      title: 'Print speed',
+                      message: _printerResolution == PrinterResolution.low
+                          ? 'Fast / Low Res skips extra status checks and uses faster Brother print settings. Wi-Fi usually gives the best chance of a 2-4 second label.'
+                          : 'High Res keeps extra status checks and uses best-quality Brother print settings for sharper labels.',
+                      tone: StatusBannerTone.info,
+                    ),
+                    const SizedBox(height: 12),
                     StatusBanner(
                       title: 'Loaded label roll',
-                      message:
-                          'The printer reports the label size at check/print time.${_loadedPrinterMedia == null ? '' : ' Last detected: $_loadedPrinterMedia.'}',
+                      message: _loadedPrinterMedia == null
+                          ? 'No loaded label size has been detected yet. Use Check Printer to read the roll currently in the printer.'
+                          : 'Detected from the printer: $_loadedPrinterMedia.',
                       tone: StatusBannerTone.info,
                     ),
                     const SizedBox(height: 16),

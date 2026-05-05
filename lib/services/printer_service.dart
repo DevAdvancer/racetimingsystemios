@@ -136,6 +136,7 @@ class MethodChannelPrinterService implements PrinterService {
           printerHost: settings.printerHost,
           printerMedia: settings.printerMedia,
           printOrientation: settings.printerOrientation.storageValue,
+          printResolution: settings.printerResolution.storageValue,
         ),
       );
       final status = PrinterStatus.fromMap(result);
@@ -169,6 +170,7 @@ class MethodChannelPrinterService implements PrinterService {
       'printerHost': settings.printerHost,
       'printerMedia': settings.printerMedia,
       'printOrientation': settings.printerOrientation.storageValue,
+      'printResolution': settings.printerResolution.storageValue,
       'connectionType': settings.printerConnectionType.storageValue,
       ...extra,
     };

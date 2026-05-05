@@ -31,6 +31,9 @@ class SettingsService {
       printerOrientation: PrinterOrientation.fromStorage(
         _preferences.getString(AppConstants.settingsPrinterOrientationKey),
       ),
+      printerResolution: PrinterResolution.fromStorage(
+        _preferences.getString(AppConstants.settingsPrinterResolutionKey),
+      ),
       printerConnectionType: PrinterConnectionType.fromStorage(
         _preferences.getString(AppConstants.settingsPrinterConnectionTypeKey),
       ),
@@ -74,6 +77,10 @@ class SettingsService {
     await _preferences.setString(
       AppConstants.settingsPrinterOrientationKey,
       settings.printerOrientation.storageValue,
+    );
+    await _preferences.setString(
+      AppConstants.settingsPrinterResolutionKey,
+      settings.printerResolution.storageValue,
     );
     await _preferences.setString(
       AppConstants.settingsPrinterConnectionTypeKey,

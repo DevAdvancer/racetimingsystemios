@@ -73,6 +73,25 @@ enum PrinterOrientation {
   }
 }
 
+enum PrinterResolution {
+  low,
+  high;
+
+  String get label => switch (this) {
+    PrinterResolution.low => 'Fast / Low Res',
+    PrinterResolution.high => 'High Res',
+  };
+
+  String get storageValue => name;
+
+  static PrinterResolution fromStorage(String? value) {
+    return PrinterResolution.values.firstWhere(
+      (resolution) => resolution.storageValue == value,
+      orElse: () => PrinterResolution.low,
+    );
+  }
+}
+
 class AppSettings {
   const AppSettings({
     required this.themeMode,
@@ -80,6 +99,7 @@ class AppSettings {
     required this.printerHost,
     required this.printerMedia,
     required this.printerOrientation,
+    required this.printerResolution,
     required this.printerConnectionType,
     required this.adminPasscode,
     required this.selectedRaceId,
@@ -92,6 +112,7 @@ class AppSettings {
   final String printerHost;
   final String printerMedia;
   final PrinterOrientation printerOrientation;
+  final PrinterResolution printerResolution;
   final PrinterConnectionType printerConnectionType;
   final String adminPasscode;
   final int? selectedRaceId;
@@ -110,6 +131,7 @@ class AppSettings {
       printerHost: AppConstants.defaultPrinterHost,
       printerMedia: AppConstants.defaultPrinterMedia,
       printerOrientation: PrinterOrientation.landscape,
+      printerResolution: PrinterResolution.low,
       printerConnectionType: PrinterConnectionType.network,
       adminPasscode: '123',
       selectedRaceId: null,
@@ -124,6 +146,7 @@ class AppSettings {
     String? printerHost,
     String? printerMedia,
     PrinterOrientation? printerOrientation,
+    PrinterResolution? printerResolution,
     PrinterConnectionType? printerConnectionType,
     String? adminPasscode,
     int? selectedRaceId,
@@ -138,6 +161,7 @@ class AppSettings {
       printerHost: printerHost ?? this.printerHost,
       printerMedia: printerMedia ?? this.printerMedia,
       printerOrientation: printerOrientation ?? this.printerOrientation,
+      printerResolution: printerResolution ?? this.printerResolution,
       printerConnectionType:
           printerConnectionType ?? this.printerConnectionType,
       adminPasscode: adminPasscode ?? this.adminPasscode,

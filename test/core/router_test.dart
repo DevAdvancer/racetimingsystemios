@@ -132,7 +132,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Result Table'), findsOneWidget);
-    expect(find.text('Record Scan'), findsOneWidget);
+    expect(find.text('Scanner listening'), findsOneWidget);
     expect(find.text('Race Dashboard'), findsOneWidget);
     expect(find.text('No runners in this race yet.'), findsOneWidget);
     expect(tester.takeException(), isNull);
